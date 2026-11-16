@@ -9,6 +9,8 @@
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "EngineUtils.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 
 namespace
 {
@@ -210,7 +212,9 @@ AFallDebrisSpawner::AFallDebrisSpawner()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.TickGroup = TG_PostPhysics;
-	Rng.Initialize(4242);
+	int32 S = 4242;
+	FParse::Value(FCommandLine::Get(), TEXT("FallSeed="), S);
+	Rng.Initialize(S * 7 + 4242);
 }
 
 AFallDebrisSpawner* AFallDebrisSpawner::Get(const UObject* WorldContext)
@@ -336,6 +340,15 @@ void AFallDebrisSpawner::Tick(float Dt)
 			const FVector BodyVelH = PL ? PL->VelocityH : FVector::ZeroVector;
 			const FVector RelV = FVector(D->Mover->VelocityH - BodyVelH) + FVector(0, 0, FW->PlayerFallSpeed - D->Mover->FallSpeed);
 			const float Strength = FMath::Clamp(RelV.Size() / 1500.f * D->Mass, 0.4f, 3.f);
+			// The player only gets hurt by a fast impact and only when not trying to grab: arriving at a piece is how you grab it.
+			if (PL && (RelV.Size() < 1500.f || PL->WantsGrab() || (D->bGrabbable && PL->IsHolding())))
+			{
+				AFallPlayer* PM = const_cast<AFallPlayer*>(PL);
+				if (D->bGrabbable && PL->WantsGrab() && !PL->IsHolding()) PM->Grab(D);
+				else if (!PL->IsHolding()) { PM->AddHorizontalImpulse(FVector(Push.X, Push.Y, 0.f).GetSafeNormal() * 250.f); PM->AddShake(0.12f); }
+				D->LastHit = Now;
+				continue;
+			}
 			const bool bHeldPlatform = D->Holder.IsValid();
 			B->ReceiveHit(Push + RelV.GetSafeNormal() * 0.5f, Strength, bHeldPlatform ? 0.f : 6.f + 7.f * Strength);
 			if (AFallPlayer* P = Cast<AFallPlayer>(*B))

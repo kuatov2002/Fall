@@ -34,7 +34,7 @@ public:
 	EFallEnemyState State = EFallEnemyState::Approach;
 
 	/** Spawns an enemy at a position relative to the player (cm). Data may be null for type defaults. */
-	static AFallEnemy* Spawn(UWorld* World, EFallEnemyType Type, const FVector& RelPos, UFallEnemyData* Data = nullptr);
+	static AFallEnemy* Spawn(UWorld* World, EFallEnemyType Type, const FVector& RelPos, UFallEnemyData* Data = nullptr, bool bDummy = false);
 
 	EFallEnemyType GetType() const { return Data ? Data->Type : EFallEnemyType::Shooter; }
 
@@ -45,10 +45,16 @@ public:
 	float OwnFall = 5500.f;
 	FVector VelH = FVector::ZeroVector;
 
+	/** Target only: knocked senseless for a few seconds (kick). */
+	void Stun() { if (GetType() == EFallEnemyType::Target && State != EFallEnemyState::Dead) { State = EFallEnemyState::Stunned; StateTime = 0.f; } }
+
 	/** Target only: the director starts the escape dive. */
 	void StartFlee();
 	/** Target only: stunned and in reach of a finisher. */
-	bool CanBeRobbed() const { return GetType() == EFallEnemyType::Target && State == EFallEnemyState::Stunned; }
+	bool CanBeRobbed() const { return GetType() == EFallEnemyType::Target && (State == EFallEnemyState::Stunned || State == EFallEnemyState::Dead) && Pack && Pack->IsVisible(); }
+
+	/** Damage test: no AI, no turret; moves at VelH. */
+	bool bTestDummy = false;
 	/** Target only: the parachute is taken. */
 	void Rob(const FVector& PushDir);
 	/** Knocked out of the fight (kick on a heavy, death). */

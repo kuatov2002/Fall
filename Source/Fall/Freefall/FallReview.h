@@ -22,6 +22,9 @@ protected:
 
 	void BotInput(float Dt, FFallInputFrame& Out);
 	void BotFull(float Dt, FFallInputFrame& Out);
+	void TickDamageTest(float Dt);
+	void TickGrabTest(float Dt);
+	void ScanPrimitives();
 	void Shot(const FString& Name);
 	void WriteMetrics();
 
@@ -54,4 +57,26 @@ protected:
 	float HoldTime = 0.f;
 	float BotClock = 0.f;
 	int32 SeenBurstEvents = 0;
+
+	// Average player: delayed reactions, noisy aim, no hidden knowledge.
+	bool bAvg = false;
+	TArray<TPair<float, FFallInputFrame>> Delayed;
+	float GrabPressT = -10.f;
+	bool bPassed = false;
+	int32 Deaths = 0;
+
+	// Damage test: every enemy type dies from the computed number of hits.
+	int32 DmgCase = -1;
+	float DmgCaseT = 0.f;
+	int32 DmgHits = 0, DmgShots = 0, DmgFails = 0, DmgSeen = 0;
+	TWeakObjectPtr<class AFallEnemy> DmgDummy;
+	TArray<TSharedPtr<class FJsonValue>> DmgResults;
+
+	// Grab test: pieces fly at the player at different speeds, with and without a grab press.
+	TWeakObjectPtr<class AFallDebris> GrabPiece;
+	bool bGrabPress = false, bGrabPressed = false, bGrabbed = false;
+
+	// Primitive check: engine utility meshes visible in the game frame (owner class -> mesh path -> max count).
+	TMap<FString, int32> Primitives;
+	float NextPrimScan = 0.f;
 };

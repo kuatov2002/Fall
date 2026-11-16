@@ -95,6 +95,9 @@ public:
 	void Grab(AFallDebris* Piece);
 	void Release();
 	void PushOff();
+	/** The grab button was pressed recently (generous window). */
+	bool WantsGrab() const { return GetWorld() && GetWorld()->GetTimeSeconds() - GrabIntentTime < 0.8f; }
+
 	/** Best grabbable piece in reach, or null. */
 	AFallDebris* FindGrabbable() const;
 
@@ -146,6 +149,7 @@ protected:
 	FVector HeldAnchorLocal = FVector::ZeroVector;
 	FVector HeldNormalLocal = FVector::UpVector;
 	float GrabCooldown = 0.f;
+	float GrabIntentTime = -10.f;
 	float FovKick = 0.f;
 	float ArmPunch = 0.f;
 	float ArmPunchTarget = 0.f;

@@ -26,8 +26,8 @@ void UFallEnemyData::ApplyDefaults(UFallEnemyData* D, EFallEnemyType Type)
 		D->SuitColor = FLinearColor(0.09f, 0.03f, 0.025f); D->AccentColor = FLinearColor(1.f, 0.1f, 0.05f);
 		break;
 	case EFallEnemyType::Wingsuiter:
-		D->Health = 45.f; D->TelegraphTime = 1.5f; D->BurstCount = 4; D->ShotInterval = 0.09f; D->Cooldown = FVector2D(3.5f, 4.5f);
-		D->Damage = 6.f; D->SpreadDeg = 2.5f; D->AimLag = 0.2f; D->Distance = FVector2D(60.f, 75.f); D->Height = 12.f; D->Agility = FVector2D(38.f, 20.f);
+		D->Health = 45.f; D->TelegraphTime = 2.0f; D->BurstCount = 3; D->ShotInterval = 0.12f; D->Cooldown = FVector2D(5.f, 6.5f);
+		D->Damage = 4.f; D->SpreadDeg = 2.5f; D->AimLag = 0.2f; D->Distance = FVector2D(60.f, 75.f); D->Height = 12.f; D->Agility = FVector2D(38.f, 20.f);
 		D->SuitColor = FLinearColor(0.12f, 0.02f, 0.02f); D->AccentColor = FLinearColor(1.f, 0.85f, 0.2f);
 		break;
 	case EFallEnemyType::Heavy:
@@ -36,7 +36,7 @@ void UFallEnemyData::ApplyDefaults(UFallEnemyData* D, EFallEnemyType Type)
 		D->SuitColor = FLinearColor(0.05f, 0.05f, 0.045f); D->AccentColor = FLinearColor(1.f, 0.1f, 0.05f);
 		break;
 	case EFallEnemyType::Target:
-		D->Health = 999.f; D->TelegraphTime = 0.6f; D->BurstCount = 2; D->ShotInterval = 0.2f; D->Cooldown = FVector2D(3.f, 5.f);
+		D->Health = 100.f; D->TelegraphTime = 0.6f; D->BurstCount = 2; D->ShotInterval = 0.2f; D->Cooldown = FVector2D(3.f, 5.f);
 		D->Damage = 5.f; D->SpreadDeg = 4.f; D->AimLag = 0.4f; D->Distance = FVector2D(20.f, 30.f); D->Height = -6.f; D->Agility = FVector2D(10.f, 22.f);
 		D->SuitColor = FLinearColor(0.06f, 0.06f, 0.07f); D->AccentColor = FLinearColor(1.f, 0.75f, 0.05f);
 		break;
@@ -54,7 +54,7 @@ AFallEnemy::AFallEnemy()
 	RimIntensity = 0.6f;
 }
 
-AFallEnemy* AFallEnemy::Spawn(UWorld* World, EFallEnemyType Type, const FVector& RelPos, UFallEnemyData* InData)
+AFallEnemy* AFallEnemy::Spawn(UWorld* World, EFallEnemyType Type, const FVector& RelPos, UFallEnemyData* InData, bool bDummy)
 {
 	UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(World);
 	const FVector PlayerPos = FW && FW->Player.IsValid() ? FW->Player->GetActorLocation() : FVector::ZeroVector;
@@ -63,6 +63,7 @@ AFallEnemy* AFallEnemy::Spawn(UWorld* World, EFallEnemyType Type, const FVector&
 	P.bDeferConstruction = true;
 	AFallEnemy* E = World->SpawnActor<AFallEnemy>(AFallEnemy::StaticClass(), FTransform(PlayerPos + RelPos), P);
 	if (!E) return nullptr;
+	E->bTestDummy = bDummy;
 	if (!InData)
 	{
 		static const TCHAR* Names[] = {TEXT("Shooter"), TEXT("Wingsuiter"), TEXT("Heavy"), TEXT("Target")};
@@ -135,7 +136,7 @@ void AFallEnemy::BeginPlay()
 	if (GetType() == EFallEnemyType::Heavy)
 	{
 		BodyPivot->SetRelativeScale3D(FVector(1.25f)); // a big man: readable as the heavy at a glance
-		BuildTurret();
+		if (!bTestDummy) BuildTurret();
 	}
 }
 
@@ -290,30 +291,24 @@ bool AFallEnemy::ReceiveHit(const FVector& PushDirWorld, float Strength, float D
 	VelH += FVector(PushDirWorld.X, PushDirWorld.Y, 0.f).GetSafeNormal() * 350.f * Strength;
 	if (GetType() == EFallEnemyType::Target)
 	{
-		// The target cannot die before the chase ends: damage fills a stun meter instead.
-		PendingHit += PushDirWorld.GetSafeNormal() * Strength;
-		Flash(FLinearColor(1.f, 0.6f, 0.1f), 1.5f + Strength);
-		StunMeter += Damage;
-		if (StunMeter >= 40.f && State != EFallEnemyState::Stunned)
+		// The carrier takes real damage. Once, below half health, it breaks away in a hard dive (the chase goes on);
+		// at zero it goes limp and keeps falling with the container on its back: the parachute is taken from the body.
+		const bool bKilled = Super::ReceiveHit(PushDirWorld, Strength, Damage);
+		Flash(FLinearColor(1.f, 0.95f, 0.9f), 1.f + 0.5f * Strength);
+		if (!bKilled && StunCount == 0 && Health < MaxHealth * 0.5f && State == EFallEnemyState::Flee)
 		{
-			StunMeter = 0.f;
-			const UFallWorldSubsystem* FWs = UFallWorldSubsystem::Get(this);
-			if (StunCount < 2 && FWs && FWs->FallTime < 150.f)
-			{
-				// Breaks away: a smoke burst and a harder dive. The chase goes on.
-				++StunCount;
-				OwnFall += 2500.f;
-				VelH += FMath::VRand().GetSafeNormal2D() * 1500.f;
-				if (AFallFX* FX = AFallFX::Get(this)) for (int32 i = 0; i < 6; ++i) FX->Sprite(GetActorLocation(), FMath::VRand() * 500.f, 200.f, 1200.f, 2.f, FLinearColor(0.9f, 0.85f, 0.75f), 0.8f, true, 1.f);
-				if (UFallWorldSubsystem* FWm = UFallWorldSubsystem::Get(this)) FWm->NoteEvent("TargetBreakaway");
-				return false;
-			}
-			State = EFallEnemyState::Stunned;
-			StateTime = 0.f;
-			SetLaser(false, FVector::ZeroVector, FVector::ZeroVector);
-			if (UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this)) FW->NoteEvent("TargetStunned");
+			++StunCount;
+			OwnFall += 2000.f;
+			VelH += FMath::VRand().GetSafeNormal2D() * 1200.f;
+			if (AFallFX* FX = AFallFX::Get(this)) for (int32 i = 0; i < 6; ++i) FX->Sprite(GetActorLocation(), FMath::VRand() * 500.f, 200.f, 1200.f, 2.f, FLinearColor(0.9f, 0.85f, 0.75f), 0.8f, true, 1.f);
+			if (UFallWorldSubsystem* FWm = UFallWorldSubsystem::Get(this)) FWm->NoteEvent("TargetBreakaway");
 		}
-		return false;
+		if (bKilled)
+		{
+			Knockout(PushDirWorld);
+			if (UFallWorldSubsystem* FWm = UFallWorldSubsystem::Get(this)) FWm->NoteEvent("TargetDown");
+		}
+		return bKilled;
 	}
 	const bool bKilled = Super::ReceiveHit(PushDirWorld, Strength, Damage);
 	Flash(FLinearColor(1.f, 0.95f, 0.9f), 1.f + 0.5f * Strength); // white and short, so the tumble stays readable
@@ -347,7 +342,7 @@ void AFallEnemy::Knockout(const FVector& PushDir)
 
 void AFallEnemy::StartFlee()
 {
-	if (GetType() != EFallEnemyType::Target || State == EFallEnemyState::Robbed) return;
+	if (GetType() != EFallEnemyType::Target || State == EFallEnemyState::Robbed || State == EFallEnemyState::Dead) return;
 	State = EFallEnemyState::Flee;
 	StateTime = 0.f;
 }
@@ -425,6 +420,15 @@ void AFallEnemy::Tick(float Dt)
 		if (State == EFallEnemyState::Telegraph || State == EFallEnemyState::Burst) { State = EFallEnemyState::Cooldown; SetLaser(false, FVector::ZeroVector, FVector::ZeroVector); }
 		ShotsLeft = 0;
 	}
+	if (bTestDummy)
+	{
+		// Damage test: no AI, just a constant relative velocity.
+		AddActorWorldOffset(VelH * Dt);
+		Control.AirVelocity = FVector(0, 0, 5500.f);
+		Super::Tick(Dt);
+		if (Membrane) UpdateMembrane();
+		return;
+	}
 	if (P && GetType() != EFallEnemyType::Wingsuiter)
 	{
 		switch (GetType())
@@ -448,8 +452,16 @@ void AFallEnemy::Tick(float Dt)
 	if (State == EFallEnemyState::Dead || State == EFallEnemyState::Robbed)
 	{
 		DeadTime += Dt;
-		OwnFall = FMath::FInterpTo(OwnFall, (FW ? FW->PlayerFallSpeed : 5500.f) + (State == EFallEnemyState::Robbed ? 2500.f : -800.f), Dt, 0.8f);
-		if (DeadTime > 7.f) Destroy();
+		if (GetType() == EFallEnemyType::Target && State == EFallEnemyState::Dead)
+		{
+			OwnFall = FMath::FInterpTo(OwnFall, 6000.f, Dt, 0.8f);
+			VelH = FMath::VInterpTo(VelH, FVector::ZeroVector, Dt, 0.5f);
+		}
+		else
+		{
+			OwnFall = FMath::FInterpTo(OwnFall, (FW ? FW->PlayerFallSpeed : 5500.f) + (State == EFallEnemyState::Robbed ? 2500.f : -800.f), Dt, 0.8f);
+			if (DeadTime > 7.f) Destroy();
+		}
 	}
 	Super::Tick(Dt);
 	if (Membrane) UpdateMembrane();
@@ -539,7 +551,7 @@ void AFallEnemy::TickTarget(float Dt, AFallPlayer* P)
 	// A yellow flare trail from the container: the parachute is always findable, without any HUD marker.
 	FlareTimer -= Dt;
 	const float ToPlayer = FVector::Dist(GetActorLocation(), P->GetActorLocation());
-	if (Pack && Pack->IsVisible() && FlareTimer <= 0.f && State == EFallEnemyState::Flee)
+	if (Pack && Pack->IsVisible() && FlareTimer <= 0.f && (State == EFallEnemyState::Flee || State == EFallEnemyState::Dead || State == EFallEnemyState::Stunned))
 	{
 		FlareTimer = 0.05f;
 		const float Near = FMath::SmoothStep(800.f, 1600.f, ToPlayer);
@@ -598,6 +610,7 @@ void AFallEnemy::TickTarget(float Dt, AFallPlayer* P)
 		break;
 	case EFallEnemyState::Robbed:
 	case EFallEnemyState::Dead:
+		Control.LookAt = FVector::ZeroVector;
 		break;
 	default:
 	{

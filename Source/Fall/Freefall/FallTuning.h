@@ -281,7 +281,7 @@ public:
 
 	/** Grab reach, cm. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debris")
-	float GrabRange = 520.f;
+	float GrabRange = 650.f;
 	/** Push-off speed from a debris piece, m/s. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debris")
 	float PushOffSpeed = 20.f;

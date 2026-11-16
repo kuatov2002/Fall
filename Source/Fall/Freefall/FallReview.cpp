@@ -19,6 +19,10 @@
 #include "FallDebris.h"
 #include "FallDirector.h"
 #include "Camera/CameraComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "Components/InstancedStaticMeshComponent.h"
+#include "UObject/UObjectIterator.h"
 
 AFallReview::AFallReview()
 {
@@ -37,6 +41,11 @@ void AFallReview::BeginPlay()
 	FParse::Value(Cmd, TEXT("FallDuration="), Duration);
 	bBursts = FParse::Param(Cmd, TEXT("FallBursts"));
 	bPerf = FParse::Param(Cmd, TEXT("FallPerf"));
+	FString Skill;
+	bAvg = FParse::Value(Cmd, TEXT("FallBotSkill="), Skill) && Skill == TEXT("avg");
+	if (FParse::Param(Cmd, TEXT("FallDamageTest"))) Bot = TEXT("damage");
+	if (FParse::Param(Cmd, TEXT("FallGrabTest"))) Bot = TEXT("grab");
+	if (FParse::Param(Cmd, TEXT("FallNoShots"))) ShotEvery = 1e9f;
 	StageDir = FPaths::ProjectSavedDir() / TEXT("Review") / FPaths::GetPathLeaf(FPaths::GetPath(Dir));
 	if (FPaths::GetPath(Dir).IsEmpty()) StageDir = FPaths::ProjectSavedDir() / TEXT("Review");
 	Dir = FPaths::ProjectSavedDir() / TEXT("Review") / Dir;
@@ -75,8 +84,9 @@ void AFallReview::BotFull(float Dt, FFallInputFrame& Out)
 	bool bThreat = false;
 	for (TActorIterator<AFallEnemy> It(GetWorld()); It; ++It)
 	{
-		if (It->State == EFallEnemyState::Dead || It->State == EFallEnemyState::Robbed) continue;
+		if ((It->State == EFallEnemyState::Dead && !It->CanBeRobbed()) || It->State == EFallEnemyState::Robbed) continue;
 		if (It->GetType() == EFallEnemyType::Target) Target = *It;
+		if (It->State == EFallEnemyState::Dead) continue;
 		const float D = FVector::Dist(It->GetActorLocation(), PP);
 		if (D < NearestD && It->GetType() != EFallEnemyType::Target) { NearestD = D; Nearest = *It; }
 		if (It->IsTelegraphing() && D < 3500.f) bThreat = true;
@@ -101,12 +111,14 @@ void AFallReview::BotFull(float Dt, FFallInputFrame& Out)
 	if (Aim)
 	{
 		const FVector AimAt = Aim->GetActorLocation() + Aim->GetVelocity() * 0.05f;
-		const FRotator Want = (AimAt - CamLoc).Rotation();
+		FRotator Want = (AimAt - CamLoc).Rotation();
+		if (bAvg) { Want.Yaw += 3.f * FMath::PerlinNoise1D(BotClock * 0.7f); Want.Pitch += 3.f * FMath::PerlinNoise1D(BotClock * 0.7f + 31.f); }
 		const float DYaw = FRotator::NormalizeAxis(Want.Yaw - CamRot.Yaw);
 		const float DPitch = FRotator::NormalizeAxis(Want.Pitch - CamRot.Pitch);
-		Out.Look = FVector2D(FMath::Clamp(DYaw * 6.f * Dt, -6.f, 6.f), FMath::Clamp(DPitch * 6.f * Dt, -4.f, 4.f));
+		const float Gain = bAvg ? 3.f : 6.f;
+		Out.Look = FVector2D(FMath::Clamp(DYaw * Gain * Dt, -6.f, 6.f), FMath::Clamp(DPitch * Gain * Dt, -4.f, 4.f));
 		const float Err = FMath::Sqrt(DYaw * DYaw + DPitch * DPitch);
-		Out.bFire = Err < 4.f && FVector::Dist(Aim->GetActorLocation(), PP) < 4000.f && !Aim->CanBeRobbed();
+		Out.bFire = Err < (bAvg ? 6.f : 4.f) && FVector::Dist(Aim->GetActorLocation(), PP) < 4000.f && !Aim->CanBeRobbed();
 		if (FVector::Dist(Aim->GetActorLocation(), PP) < 380.f && !Aim->CanBeRobbed()) Out.bKick = !LastBot.bKick;
 	}
 	else
@@ -125,16 +137,51 @@ void AFallReview::BotFull(float Dt, FFallInputFrame& Out)
 	else
 	{
 		HoldTime = 0.f;
-		if ((bThreat || FMath::Fmod(BotClock, 17.f) < 0.1f) && P->FindGrabbable() && !bChase) Out.bGrab = !LastBot.bGrab;
+		if (!bAvg)
+		{
+			if ((bThreat || FMath::Fmod(BotClock, 17.f) < 0.1f) && P->FindGrabbable() && !bChase) Out.bGrab = !LastBot.bGrab;
+		}
+		else if (bThreat && !bChase)
+		{
+			AFallDebris* Best = nullptr; float BestD = 1500.f;
+			for (TActorIterator<AFallDebris> It(GetWorld()); It; ++It)
+			{
+				if (!It->bGrabbable || It->Holder.IsValid()) continue;
+				const float D = It->DistanceTo(PP);
+				if (D < BestD) { BestD = D; Best = *It; }
+			}
+			if (Best)
+			{
+				const FVector To = Best->GetActorLocation() - PP;
+				const FVector Local = P->GetActorQuat().UnrotateVector(FVector(To.X, To.Y, 0.f));
+				Out.Slide = FMath::Clamp(Local.Y / 400.f, -1.f, 1.f);
+				Out.Dive = To.Z < -200.f ? 1.f : (To.Z > 200.f ? -1.f : 0.f);
+				if (BestD < 800.f && BotClock - GrabPressT > 0.5f) { Out.bGrab = true; GrabPressT = BotClock; }
+			}
+		}
 	}
 	if (P->Ammo <= 0) Out.bReload = true;
 }
 
 void AFallReview::BotInput(float Dt, FFallInputFrame& Out)
 {
+	if (Bot == TEXT("damage")) return;
+	if (Bot == TEXT("grab")) { Out.bGrab = bGrabPress; bGrabPress = false; return; }
 	if (Bot == TEXT("full"))
 	{
 		BotFull(Dt, Out);
+		if (bAvg)
+		{
+			// 250 ms reaction delay: the body acts on what the bot decided a quarter second ago.
+			const FFallInputFrame Decided = Out;
+			Delayed.Add(TPair<float, FFallInputFrame>(T, Decided));
+			FFallInputFrame Old;
+			while (Delayed.Num() > 0 && Delayed[0].Key <= T - 0.25f) { Old = Delayed[0].Value; Delayed.RemoveAt(0); }
+			// Look deltas are re-summed so the delayed stream turns as far as the decisions did.
+			Out = Old;
+			LastBot = Decided;
+			return;
+		}
 		if (bBursts && !bPerf && (Out.Dive != LastBot.Dive) && BurstLeft <= 0)
 		{
 			BurstLeft = 10; BurstIndex = 0;
@@ -243,6 +290,8 @@ void AFallReview::Tick(float DeltaSeconds)
 			if (SeenEvents == 0) LastEventTime = E.Time;
 			LongestGap = FMath::Max(LongestGap, E.Time - LastEventTime);
 			LastEventTime = E.Time;
+			if (E.Name == FName("Landed")) bPassed = true;
+			if (E.Name == FName("PlayerDeath") || E.Name == FName("Crash")) ++Deaths;
 			TSharedPtr<FJsonObject> O = MakeShared<FJsonObject>();
 			O->SetNumberField(TEXT("t"), E.Time);
 			O->SetStringField(TEXT("name"), E.Name.ToString());
@@ -275,9 +324,12 @@ void AFallReview::Tick(float DeltaSeconds)
 		Shot(FString::Printf(TEXT("shot_%04d_t%06.2f"), ShotIndex++, T));
 	}
 
+	if (T >= NextPrimScan) { NextPrimScan = T + 1.f; ScanPrimitives(); }
+	if (Bot == TEXT("damage")) TickDamageTest(DeltaSeconds);
+	if (Bot == TEXT("grab")) TickGrabTest(DeltaSeconds);
 	T += DeltaSeconds;
 	++Frame;
-	if (T >= Duration && !bWritten)
+	if ((T >= Duration || (bPassed && Bot != TEXT("damage") && Bot != TEXT("grab"))) && !bWritten)
 	{
 		WriteMetrics();
 		bWritten = true;
@@ -291,6 +343,21 @@ void AFallReview::WriteMetrics()
 	Root->SetStringField(TEXT("bot"), Bot);
 	Root->SetNumberField(TEXT("duration_s"), T);
 	Root->SetNumberField(TEXT("frames"), Frame);
+	Root->SetStringField(TEXT("skill"), bAvg ? TEXT("avg") : TEXT("good"));
+	Root->SetBoolField(TEXT("passed"), bPassed);
+	{
+		TSharedPtr<FJsonObject> PO = MakeShared<FJsonObject>();
+		for (const TPair<FString, int32>& Pr : Primitives) PO->SetNumberField(Pr.Key, Pr.Value);
+		Root->SetObjectField(TEXT("engine_primitives"), PO);
+		Root->SetNumberField(TEXT("engine_primitive_kinds"), Primitives.Num());
+	}
+	Root->SetNumberField(TEXT("deaths"), Deaths);
+	if (Bot == TEXT("damage") || Bot == TEXT("grab"))
+	{
+		Root->SetArrayField(TEXT("damage_cases"), DmgResults);
+		Root->SetNumberField(TEXT("damage_fails"), DmgFails);
+		Root->SetBoolField(TEXT("damage_pass"), DmgFails == 0 && DmgResults.Num() > 0);
+	}
 
 	TArray<TSharedPtr<FJsonValue>> PressArr;
 	TArray<float> DiveTimes, BrakeTimes;
@@ -347,4 +414,174 @@ void AFallReview::WriteMetrics()
 	FJsonSerializer::Serialize(Root.ToSharedRef(), W);
 	FFileHelper::SaveStringToFile(Out, *(Dir / TEXT("metrics.json")));
 	FFileHelper::SaveStringToFile(Out, *(StageDir / TEXT("metrics.json")));
+}
+
+void AFallReview::TickDamageTest(float Dt)
+{
+	// Each enemy type, three distances, three lateral speeds: the player's own weapon fires at the dummy
+	// until it dies; the kill must come on exactly ceil(health / damage) hits.
+	AFallPlayer* P = Cast<AFallPlayer>(UGameplayStatics::GetPlayerPawn(this, 0));
+	UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this);
+	if (!P || !FW || T < 1.f) return;
+	static const float Dists[] = {500.f, 2000.f, 4000.f};
+	static const float Speeds[] = {0.f, 2000.f, 4000.f};
+	const int32 NumCases = 4 * 3 * 3;
+	const UFallWeaponData* W = UFallWeaponData::Resolve(P->Weapon);
+	auto CaseType = [](int32 C) { return (EFallEnemyType)(C / 9); };
+	auto Finish = [&](bool bOk, const TCHAR* Why)
+	{
+		AFallEnemy* E = DmgDummy.Get();
+		const int32 Expected = E ? FMath::CeilToInt(E->MaxHealth / W->Damage) : -1;
+		TSharedPtr<FJsonObject> O = MakeShared<FJsonObject>();
+		O->SetNumberField(TEXT("type"), (int32)CaseType(DmgCase));
+		O->SetNumberField(TEXT("distance_cm"), Dists[(DmgCase / 3) % 3]);
+		O->SetNumberField(TEXT("lateral_cms"), Speeds[DmgCase % 3]);
+		O->SetNumberField(TEXT("health"), E ? E->MaxHealth : -1.f);
+		O->SetNumberField(TEXT("expected_hits"), Expected);
+		O->SetNumberField(TEXT("hits"), DmgHits);
+		O->SetNumberField(TEXT("shots"), DmgShots);
+		O->SetBoolField(TEXT("pass"), bOk);
+		O->SetStringField(TEXT("note"), Why);
+		DmgResults.Add(MakeShared<FJsonValueObject>(O));
+		if (!bOk) ++DmgFails;
+		UE_LOG(LogTemp, Display, TEXT("FallDamageTest case %d type %d dist %.0f speed %.0f: %s hits %d/%d shots %d %s"), DmgCase, (int32)CaseType(DmgCase), Dists[(DmgCase / 3) % 3], Speeds[DmgCase % 3], bOk ? TEXT("PASS") : TEXT("FAIL"), DmgHits, Expected, DmgShots, Why);
+		if (E) E->Destroy();
+		DmgDummy = nullptr;
+	};
+
+	if (!DmgDummy.IsValid())
+	{
+		++DmgCase;
+		if (DmgCase >= NumCases)
+		{
+			UE_LOG(LogTemp, Display, TEXT("FallDamageTest %s: %d of %d cases failed"), DmgFails == 0 ? TEXT("PASS") : TEXT("FAIL"), DmgFails, NumCases);
+			Duration = 0.f; // writes metrics and exits on this frame
+			return;
+		}
+		const FVector Fwd = P->Camera->GetForwardVector();
+		const FVector Right = P->Camera->GetRightVector();
+		const FVector Rel = P->Camera->GetComponentLocation() + Fwd * Dists[(DmgCase / 3) % 3] - P->GetActorLocation();
+		AFallEnemy* E = AFallEnemy::Spawn(GetWorld(), CaseType(DmgCase), Rel, nullptr, true);
+		if (E) E->VelH = Right * Speeds[DmgCase % 3];
+		DmgDummy = E;
+		DmgCaseT = 0.f;
+		DmgHits = 0;
+		DmgShots = 0;
+		DmgSeen = FW->Events.Num();
+		return;
+	}
+	AFallEnemy* E = DmgDummy.Get();
+	DmgCaseT += Dt;
+	for (; DmgSeen < FW->Events.Num(); ++DmgSeen)
+	{
+		const FName N = FW->Events[DmgSeen].Name;
+		if (N == FName("Hit") || N == FName("Kill")) ++DmgHits;
+	}
+	const int32 Expected = FMath::CeilToInt(E->MaxHealth / W->Damage);
+	if (E->IsDead())
+	{
+		Finish(DmgHits == Expected, DmgHits == Expected ? TEXT("killed") : TEXT("killed with a wrong hit count"));
+		return;
+	}
+	if (DmgHits >= Expected) { Finish(false, TEXT("survived the computed number of hits")); return; }
+	if (DmgCaseT > 12.f) { Finish(false, TEXT("timeout")); return; }
+	if (DmgCaseT < 0.3f) return;
+	// Keep the dummy in the shooting lane: it slides sideways, the test wraps it back.
+	const FVector Rel = E->GetActorLocation() - P->Camera->GetComponentLocation();
+	if (FMath::Abs(Rel | P->Camera->GetRightVector()) > 1500.f) E->AddActorWorldOffset(-P->Camera->GetRightVector() * 2.f * (Rel | P->Camera->GetRightVector()));
+	P->Ammo = 24;
+	const int32 Before = P->Ammo;
+	P->AimPoint = E->GetActorLocation();
+	P->Fire();
+	if (P->Ammo < Before) ++DmgShots;
+}
+
+void AFallReview::TickGrabTest(float Dt)
+{
+	// A grabbable panel rises at the player. With a grab press (on time or up to 0.6 s early) the player must hold it
+	// and take no damage; without a press a slow contact must not hurt; a fast unguarded hit must hurt.
+	struct FCase { float Speed; float PressLead; bool bExpectGrab; bool bExpectDamage; const TCHAR* Name; };
+	static const FCase Cases[] = {
+		{3.f, 0.f, true, false, TEXT("slow, press on arrival")},
+		{8.f, 0.f, true, false, TEXT("medium, press on arrival")},
+		{14.f, 0.f, true, false, TEXT("fast, press on arrival")},
+		{8.f, 0.6f, true, false, TEXT("medium, press 0.6 s early")},
+		{5.f, -1.f, false, false, TEXT("slow, no press")},
+		{12.f, -1.f, false, false, TEXT("medium, no press")},
+		{28.f, -1.f, false, true, TEXT("very fast, no press")},
+	};
+	const int32 NumCases = UE_ARRAY_COUNT(Cases);
+	AFallPlayer* P = Cast<AFallPlayer>(UGameplayStatics::GetPlayerPawn(this, 0));
+	AFallDebrisSpawner* Sp = AFallDebrisSpawner::Get(this);
+	if (!P || !Sp || T < 1.f) return;
+	auto Finish = [&](const TCHAR* Why)
+	{
+		const FCase& C = Cases[DmgCase];
+		const bool bDamaged = P->Health < P->MaxHealth;
+		const bool bOk = bGrabbed == C.bExpectGrab && bDamaged == C.bExpectDamage;
+		TSharedPtr<FJsonObject> O = MakeShared<FJsonObject>();
+		O->SetStringField(TEXT("case"), C.Name);
+		O->SetBoolField(TEXT("grabbed"), bGrabbed);
+		O->SetNumberField(TEXT("damage"), P->MaxHealth - P->Health);
+		O->SetBoolField(TEXT("pass"), bOk);
+		O->SetStringField(TEXT("note"), Why);
+		DmgResults.Add(MakeShared<FJsonValueObject>(O));
+		if (!bOk) ++DmgFails;
+		UE_LOG(LogTemp, Display, TEXT("FallGrabTest %s: %s grabbed %d damage %.1f (%s)"), C.Name, bOk ? TEXT("PASS") : TEXT("FAIL"), bGrabbed ? 1 : 0, P->MaxHealth - P->Health, Why);
+		if (P->IsHolding()) P->Release();
+		if (AFallDebris* D = GrabPiece.Get()) D->Destroy();
+		GrabPiece = nullptr;
+	};
+	if (!GrabPiece.IsValid())
+	{
+		++DmgCase;
+		if (DmgCase >= NumCases)
+		{
+			UE_LOG(LogTemp, Display, TEXT("FallGrabTest %s: %d of %d cases failed"), DmgFails == 0 ? TEXT("PASS") : TEXT("FAIL"), DmgFails, NumCases);
+			Duration = 0.f;
+			return;
+		}
+		P->Health = P->MaxHealth;
+		P->VelocityH = FVector::ZeroVector;
+		const FCase& C = Cases[DmgCase];
+		GrabPiece = Sp->SpawnPiece(EFallDebrisType::Plate, FVector(0, 0, -C.Speed * 100.f * 2.5f), FVector(0, 0, C.Speed), 1.f, false);
+		DmgCaseT = 0.f;
+		bGrabPressed = false;
+		bGrabbed = false;
+		return;
+	}
+	const FCase& C = Cases[DmgCase];
+	AFallDebris* D = GrabPiece.Get();
+	DmgCaseT += Dt;
+	D->Mover->VelocityH = FVector::ZeroVector; // straight at the player
+	const float Dist = D->DistanceTo(P->GetActorLocation());
+	const float Eta = Dist / (C.Speed * 100.f);
+	if (C.PressLead >= 0.f && !bGrabPressed && (Eta <= C.PressLead + Dt || (C.PressLead == 0.f && Dist < 100.f))) { bGrabPress = true; bGrabPressed = true; }
+	if (P->IsHolding()) bGrabbed = true;
+	if (bGrabbed && DmgCaseT > 0.5f + 2.5f) { Finish(TEXT("held")); return; }
+	if (DmgCaseT > 5.5f) Finish(TEXT("piece passed"));
+}
+
+void AFallReview::ScanPrimitives()
+{
+	// Every visible static mesh whose asset lives in the engine's utility folders counts, whoever spawned it.
+	// Invisible collision-only components are skipped. The gate is zero entries.
+	TMap<FString, int32> Now;
+	for (TObjectIterator<UStaticMeshComponent> It; It; ++It)
+	{
+		UStaticMeshComponent* C = *It;
+		if (!C || C->GetWorld() != GetWorld() || !C->IsRegistered() || !C->IsVisible() || C->bHiddenInGame) continue;
+		if (C->GetOwner() && C->GetOwner()->IsHidden()) continue;
+		const UStaticMesh* M = C->GetStaticMesh();
+		if (!M) continue;
+		const FString Path = M->GetPathName();
+		if (!Path.StartsWith(TEXT("/Engine/"))) continue;
+		const FString Key = FString::Printf(TEXT("%s | %s"), C->GetOwner() ? *C->GetOwner()->GetClass()->GetName() : TEXT("none"), *M->GetPackage()->GetName());
+		Now.FindOrAdd(Key) += FMath::Max(1, (C->IsA<UInstancedStaticMeshComponent>() ? Cast<UInstancedStaticMeshComponent>(C)->GetInstanceCount() : 1));
+	}
+	for (const TPair<FString, int32>& Pr : Now)
+	{
+		int32& Max = Primitives.FindOrAdd(Pr.Key);
+		Max = FMath::Max(Max, Pr.Value);
+	}
 }

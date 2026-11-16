@@ -18,6 +18,7 @@ def make(name, cls):
 
 seq = make('DA_FallSequence', unreal.FallSequence)
 seq.reset_to_shipped_design()
+eal.save_loaded_asset(seq, False)
 make('DA_FallMovement', unreal.FallMovementData)
 make('DA_FallAnim', unreal.FallAnimData)
 make('DA_FallWeapon', unreal.FallWeaponData)
@@ -25,6 +26,7 @@ for t in ['Shooter', 'Wingsuiter', 'Heavy', 'Target']:
     e = make('DA_Enemy_' + t, unreal.FallEnemyData)
     e.set_editor_property('type', getattr(unreal.FallEnemyType, t.upper()))
     e.reset_to_type_defaults()
+    eal.save_loaded_asset(e, False)
 eal.save_directory(P)
 
 # Director in the map, pointing at the sequence asset.

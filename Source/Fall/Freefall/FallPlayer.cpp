@@ -361,7 +361,7 @@ AFallEnemy* AFallPlayer::FindEnemyInReach(float Range) const
 	const FVector Fwd = Camera->GetForwardVector();
 	for (TActorIterator<AFallEnemy> It(GetWorld()); It; ++It)
 	{
-		if (It->State == EFallEnemyState::Dead || It->State == EFallEnemyState::Robbed) continue;
+		if ((It->State == EFallEnemyState::Dead && !It->CanBeRobbed()) || It->State == EFallEnemyState::Robbed) continue;
 		const FVector D = It->GetActorLocation() - GetActorLocation();
 		const float Dist = D.Size();
 		if (Dist > Range) continue;
@@ -435,7 +435,7 @@ void AFallPlayer::TryKick()
 	const UFallWeaponData* W = UFallWeaponData::Resolve(Weapon);
 	AFallEnemy* E = FindEnemyInReach(W->KickRange * 1.6f);
 	// A stunned parachute carrier in reach: take the parachute instead of kicking.
-	if (E && E->CanBeRobbed() && FVector::Dist(E->GetActorLocation(), GetActorLocation()) < W->KickRange * 1.55f)
+	if (E && E->CanBeRobbed() && FVector::Dist(E->GetActorLocation(), GetActorLocation()) < 650.f)
 	{
 		TakeParachute(E);
 		return;
@@ -514,6 +514,20 @@ void AFallPlayer::UpdateCombat(float Dt)
 		AimPoint = GetWorld()->LineTraceSingleByChannel(Hit, From + Camera->GetForwardVector() * 250.f, To, ECC_Visibility, Q) ? Hit.ImpactPoint : To;
 	}
 
+	// Finisher assist: a stunned or dead carrier in reach pulls the player onto the container; F or E takes it.
+	if (!bHasParachute && RobTime < 0.f)
+	{
+		for (TActorIterator<AFallEnemy> It(GetWorld()); It; ++It)
+		{
+			if (!It->CanBeRobbed()) continue;
+			const FVector To = It->GetActorLocation() - GetActorLocation();
+			if (To.Size() < 1200.f)
+			{
+				AddActorWorldOffset(To.GetSafeNormal() * FMath::Min(To.Size() - 150.f, 450.f * Dt));
+				if (Pressed(&FFallInputFrame::bGrab) && To.Size() < 650.f) TakeParachute(*It);
+			}
+		}
+	}
 	if (RobTime < 0.f && !bCanopy)
 	{
 		if (InputNow.bFire) Fire();
@@ -539,7 +553,7 @@ void AFallPlayer::UpdateCombat(float Dt)
 		{
 			const FVector Push = (E->GetActorLocation() - GetActorLocation()).GetSafeNormal();
 			if (E->GetType() == EFallEnemyType::Heavy) E->Knockout(Push);
-			else if (E->GetType() == EFallEnemyType::Target) E->ReceiveHit(Push, 2.5f, 100.f);
+			else if (E->GetType() == EFallEnemyType::Target) { E->ReceiveHit(Push, 2.5f, 60.f); if (!E->IsDead()) E->Stun(); }
 			else E->ReceiveHit(Push, 2.5f, W->KickDamage);
 			E->VelH += FVector(Push.X, Push.Y, 0.f) * W->KickPush;
 			HitStop(W->KickHitStop);
@@ -685,9 +699,24 @@ void AFallPlayer::Tick(float DeltaSeconds)
 		if (Pressed(&FFallInputFrame::bPush)) PushOff();
 		else if (Pressed(&FFallInputFrame::bGrab)) Release();
 	}
-	else if (Pressed(&FFallInputFrame::bGrab) && GrabCooldown <= 0.f)
+	else if (GrabCooldown <= 0.f)
 	{
-		Grab(FindGrabbable());
+		// Grab with a generous window: a press up to 0.8 s before a piece is in reach still counts.
+		if (Pressed(&FFallInputFrame::bGrab)) GrabIntentTime = GetWorld()->GetTimeSeconds();
+		if (WantsGrab()) if (AFallDebris* Piece = FindGrabbable()) { Grab(Piece); GrabIntentTime = -10.f; }
+		// Grab assist: close to a piece that can be held, the player drifts gently towards its handhold.
+		AFallDebris* Best = nullptr; float BestD = 380.f;
+		for (TActorIterator<AFallDebris> It(GetWorld()); It; ++It)
+		{
+			if (!It->bGrabbable || It->Holder.IsValid()) continue;
+			const float D = It->DistanceTo(GetActorLocation());
+			if (D < BestD) { BestD = D; Best = *It; }
+		}
+		if (Best && BestD > 70.f)
+		{
+			const FVector S = Best->ClosestSurfacePoint(GetActorLocation());
+			AddActorWorldOffset((S - GetActorLocation()).GetSafeNormal() * FMath::Min(BestD - 70.f, 160.f * DeltaSeconds));
+		}
 	}
 	UpdateMovement(DeltaSeconds);
 

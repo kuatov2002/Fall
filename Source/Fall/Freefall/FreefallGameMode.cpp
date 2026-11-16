@@ -36,6 +36,8 @@ void AFreefallGameMode::RestartPlayer(AController* NewPlayer)
 void AFreefallGameMode::StartPlay()
 {
 	UWorld* W = GetWorld();
+	int32 Seed = 0;
+	if (FParse::Value(FCommandLine::Get(), TEXT("FallSeed="), Seed)) { FMath::RandInit(Seed); FMath::SRandInit(Seed); }
 	FActorSpawnParameters P;
 	P.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	if (IsGallery())
