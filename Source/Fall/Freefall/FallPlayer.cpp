@@ -15,6 +15,7 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Components/AudioComponent.h"
+#include "Components/PointLightComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/App.h"
@@ -41,6 +42,16 @@ AFallPlayer::AFallPlayer()
 	Camera->PostProcessSettings.AutoExposureBias = -0.6f;
 	Camera->PostProcessSettings.bOverride_ColorContrast = true;
 	Camera->PostProcessSettings.ColorContrast = FVector4(1.08f, 1.08f, 1.08f, 1.f);
+
+	// Soft fill from the camera side: the body keeps its shape when it is backlit against dark valleys.
+	FillLight = CreateDefaultSubobject<UPointLightComponent>(TEXT("FillLight"));
+	FillLight->SetupAttachment(Camera);
+	FillLight->SetRelativeLocation(FVector(60.f, 0.f, 40.f));
+	FillLight->SetIntensityUnits(ELightUnits::Candelas);
+	FillLight->SetIntensity(1.6f);
+	FillLight->SetAttenuationRadius(900.f);
+	FillLight->SetCastShadows(false);
+	FillLight->SetLightColor(FLinearColor(0.75f, 0.85f, 1.f));
 
 	WindAudio = CreateDefaultSubobject<UAudioComponent>(TEXT("WindAudio"));
 	WindAudio->SetupAttachment(RootComponent);
@@ -206,7 +217,9 @@ void AFallPlayer::UpdateMovement(float Dt)
 	// Fall speed: speeding up is gravity against drag (slow), slowing down is drag (fast).
 	const float Target = StanceSpeed();
 	const float Rate = Target > FallSpeed ? M->SpeedUpRate : M->SlowDownRate;
-	FallSpeed += (Target - FallSpeed) * FMath::Min(1.f, Rate * Dt);
+	float DV = (Target - FallSpeed) * FMath::Min(1.f, Rate * Dt);
+	if (DV > 0.f) DV = FMath::Min(DV, M->MaxAccel * Dt); // gravity is the limit when speeding up
+	FallSpeed += DV;
 
 	// Horizontal: slide along the camera right, drift forward in the track.
 	const FRotator Yaw(0.f, GetActorRotation().Yaw, 0.f);
@@ -292,7 +305,7 @@ void AFallPlayer::UpdateHold(float Dt)
 	const FVector A = T.TransformPositionNoScale(HeldAnchorLocal);
 	const FVector N = T.TransformVectorNoScale(HeldNormalLocal).GetSafeNormal();
 	// The body hangs off the surface; it glides there in the first moments of the grab.
-	SetActorLocation(FMath::VInterpTo(GetActorLocation(), A + N * 38.f, Dt, 9.f));
+	SetActorLocation(FMath::VInterpTo(GetActorLocation(), A + N * 30.f, Dt, 9.f));
 	FallSpeed = P->Mover->FallSpeed / 100.f;
 	VelocityH = P->Mover->VelocityH;
 	AddActorWorldOffset(VelocityH * Dt);
@@ -436,6 +449,7 @@ bool AFallPlayer::ReceiveHit(const FVector& PushDirWorld, float Strength, float 
 {
 	if (bDied) return false;
 	const bool bDead = Super::ReceiveHit(PushDirWorld, Strength, Damage);
+	Flash(FLinearColor(1.f, 0.12f, 0.05f), 2.f + Strength); // the player's own damage reads red
 	LastDamage = GetWorld()->GetTimeSeconds();
 	DamagePulse = FMath::Min(1.f, DamagePulse + Damage / 30.f + 0.25f);
 	AddShake(0.15f + 0.1f * Strength);
@@ -577,8 +591,9 @@ void AFallPlayer::UpdateCamera(float Dt)
 	const float Dolly = FMath::Tan(FMath::DegreesToRadians(M->FOV.X * 0.5f)) / FMath::Tan(FMath::DegreesToRadians((Fov - FovKick) * 0.5f));
 	const float DiveBias = M->DivePitchBias * FMath::Max(Dive, 0.f) - 7.f * FMath::Clamp(1.f - FMath::Abs(Dive) * 2.f, 0.f, 1.f);
 	CameraArm->SetWorldRotation(FRotator(CR.Pitch + DiveBias, CR.Yaw, 0.f) + Shake);
-	ArmPunch = FMath::FInterpTo(ArmPunch, 0.f, Dt, 3.f);
-	CameraArm->TargetArmLength = M->ArmLength * Dolly * (1.f + ArmPunch) * (1.f - 0.15f * FMath::Abs(InputNow.Slide));
+	ArmPunch = FMath::FInterpTo(ArmPunch, ArmPunchTarget, Dt, 7.f);
+	ArmPunchTarget = FMath::FInterpTo(ArmPunchTarget, 0.f, Dt, 2.5f);
+	CameraArm->TargetArmLength = M->ArmLength * Dolly * (1.f + ArmPunch) * (1.f - 0.08f * FMath::Abs(InputNow.Slide));
 	CameraArm->SocketOffset = M->CameraOffset * FMath::Lerp(1.f, Dolly, 0.5f) + FVector(0.f, 0.f, CamAccelOffset);
 	// Head-down, the body hangs below the pelvis pivot: aim at its middle.
 	CameraArm->TargetOffset = FVector(0.f, 0.f, -45.f * FMath::Max(Dive, 0.f));
@@ -606,10 +621,10 @@ void AFallPlayer::Tick(float DeltaSeconds)
 	// Brake: the body hits the air. Dive: the head drops first.
 	if (InputNow.Dive < -0.5f && InputPrev.Dive >= -0.5f)
 	{
-		AddShake(0.4f); AddImpulse(FVector::UpVector, 1.8f); FovKick = -7.f; CamAccelOffset = -70.f; ArmPunch = -0.18f;
+		AddShake(0.4f); AddImpulse(FVector::UpVector, 1.8f); FovKick = -7.f; ArmPunchTarget = -0.15f;
 		for (TActorIterator<AFallSpeedField> It(GetWorld()); It; ++It) It->Burst(2);
 	}
-	if (InputNow.Dive > 0.5f && InputPrev.Dive <= 0.5f) { AddShake(0.35f); AddImpulse(GetActorForwardVector() * -1.f + FVector(0, 0, -0.5f), 0.8f); FovKick = 8.f; CamAccelOffset = 90.f; ArmPunch = 0.1f; }
+	if (InputNow.Dive > 0.5f && InputPrev.Dive <= 0.5f) { AddShake(0.35f); AddImpulse(GetActorForwardVector() * -1.f + FVector(0, 0, -0.5f), 0.8f); FovKick = 8.f; ArmPunchTarget = 0.12f; }
 	if (IsHolding())
 	{
 		if (Pressed(&FFallInputFrame::bPush)) PushOff();

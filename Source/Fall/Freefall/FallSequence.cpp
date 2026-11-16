@@ -63,7 +63,7 @@ void UFallSequence::BuildDefault()
 	// 1. Breakout, 0-20 s: the airship explodes above; chunks plunge past, so diving away and braking behind cover come naturally. No enemies.
 	Seg(0.f, "Breakout", true, TEXT("Airship explodes above the player"));
 	Clouds(0.f, 0.7f);
-	Shot(0.f, EFallOneShot::AirshipBreakup, FVector(32.f, 4.f, 16.f), TEXT("Burning airship ahead and above, breaks apart after 2 s"));
+	Shot(0.f, EFallOneShot::AirshipBreakup, FVector(40.f, 4.f, 9.f), TEXT("Burning airship ahead and above, breaks apart after 1.6 s"));
 	Wave(3.f, EFallDebrisType::Shards, 3.f, FVector2D(-20.f, -10.f), 12.f, 0.5f, 6.f, 0.f, TEXT("Fragments rain from above: dive to outrun them"));
 	Wave(3.5f, EFallDebrisType::Plate, 0.6f, FVector2D(-16.f, -9.f), 10.f, 0.6f, 6.f, 0.3f, TEXT("Hull plates falling onto the player"));
 	Shot(6.f, EFallOneShot::EngineExplosion, FVector(10.f, -7.f, 14.f), TEXT("Engine pod blows up close"));

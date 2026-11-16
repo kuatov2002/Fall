@@ -129,7 +129,7 @@ void AFallAnimGallery::StartEntry(int32 Index, int32 InAngle)
 		const FQuat Att(FVector::RightVector, FMath::DegreesToRadians(80.f));
 		const FVector Front = Att.RotateVector(FVector::ForwardVector);
 		const FVector UpB = Att.RotateVector(FVector::UpVector);
-		const FVector Center = UpB * 22.f + Front * 40.f;
+		const FVector Center = UpB * 20.f + Front * 30.f;
 		Prop->SetWorldLocation(Center);
 		Prop->SetWorldRotation(FRotationMatrix::MakeFromZX(-Front, UpB).Rotator());
 		Prop->SetWorldScale3D(FVector(1.4f, 1.2f, 0.2f));
@@ -173,7 +173,8 @@ void AFallAnimGallery::ApplyEntry(float Dt)
 	{
 		C.Override = "Grab"; C.OverrideTarget = 1.f;
 		const FVector Lat = FVector::RightVector * 24.f;
-		C.HandTarget[0] = GrabPoint - Lat; C.HandTarget[1] = GrabPoint + Lat;
+		const FVector Slip(FMath::PerlinNoise1D(t * 1.3f) * 3.f, FMath::PerlinNoise1D(t * 1.1f + 5.f) * 3.f, 0.f);
+		C.HandTarget[0] = GrabPoint - Lat + Slip; C.HandTarget[1] = GrabPoint + Lat - Slip;
 		C.HandWeight[0] = C.HandWeight[1] = 1.f;
 		C.LookAt = GrabPoint + FVector(0, 0, -200.f);
 		C.AirVelocity.Z = 900.f; // falling with the debris: little relative wind

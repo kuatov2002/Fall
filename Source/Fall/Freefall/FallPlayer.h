@@ -44,6 +44,7 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Fall") TObjectPtr<USpringArmComponent> CameraArm;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Fall") TObjectPtr<UCameraComponent> Camera;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Fall") TObjectPtr<UAudioComponent> WindAudio;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Fall") TObjectPtr<class UPointLightComponent> FillLight;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fall")
 	TObjectPtr<UFallMovementData> Movement;
@@ -145,4 +146,5 @@ protected:
 	float GrabCooldown = 0.f;
 	float FovKick = 0.f;
 	float ArmPunch = 0.f;
+	float ArmPunchTarget = 0.f;
 };

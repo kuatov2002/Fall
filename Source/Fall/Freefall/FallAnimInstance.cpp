@@ -415,6 +415,7 @@ bool FFallAnimProxy::Evaluate(FPoseContext& Output)
 	// Gusts and hits kick the springs.
 	const float StiffMul = P.Stiffness;
 	const float NoiseMul = P.NoiseScale;
+	const float FlutterMul = FMath::Min(P.NoiseScale, 1.2f) * FMath::Lerp(1.f, 0.2f, FMath::Clamp(1.f - P.Stiffness, 0.f, 1.f));
 	FVector GustKick = FVector::ZeroVector;
 	if (Clock >= NextGust)
 	{
@@ -454,7 +455,7 @@ bool FFallAnimProxy::Evaluate(FPoseContext& Output)
 			const FQuat T = FQuat::Slerp(FQuat::Identity, SpineTotal, (RI + 1) / 5.f) * RefCS[i].GetRotation();
 			const FFallBoneGroupTuning& G = D->Group(EFallBoneGroup::Spine);
 			if (SpringValid[i]) SpringW[i] += (GustKick * 0.4f + HitAxis * (0.4f + 0.15f * RI) + Chest[kUp] * In.Recoil * 3.f);
-			Rot = Flutter(i, G.NoiseDeg.Y * 0.3f * In.Wind * NoiseMul) * Spring(i, Noise(i, FMath::Lerp(G.NoiseDeg.X, G.NoiseDeg.Y, In.Wind) * NoiseMul) * T, G, StiffMul, Dt);
+			Rot = Flutter(i, G.NoiseDeg.Y * 0.3f * In.Wind * FlutterMul) * Spring(i, Noise(i, FMath::Lerp(G.NoiseDeg.X, G.NoiseDeg.Y, In.Wind) * NoiseMul) * T, G, StiffMul, Dt);
 			if (RI == 4)
 			{
 				ChestDelta = Rot * RefCS[i].GetRotation().Inverse();
@@ -474,7 +475,7 @@ bool FFallAnimProxy::Evaluate(FPoseContext& Output)
 			const FQuat T = FQuat(Chest[kUp], FMath::DegreesToRadians(FYaw)) * FQuat(Chest[kRight], FMath::DegreesToRadians(FPit)) * ChestDelta * RefCS[i].GetRotation();
 			const FFallBoneGroupTuning& G = D->Group(EFallBoneGroup::Head);
 			if (SpringValid[i]) SpringW[i] += (GustKick * 0.3f + HitAxis * 0.8f);
-			Rot = Flutter(i, G.NoiseDeg.Y * 0.3f * In.Wind * NoiseMul) * Spring(i, Noise(i, FMath::Lerp(G.NoiseDeg.X, G.NoiseDeg.Y, In.Wind) * NoiseMul) * T, G, StiffMul, Dt);
+			Rot = Flutter(i, G.NoiseDeg.Y * 0.3f * In.Wind * FlutterMul) * Spring(i, Noise(i, FMath::Lerp(G.NoiseDeg.X, G.NoiseDeg.Y, In.Wind) * NoiseMul) * T, G, StiffMul, Dt);
 			break;
 		}
 		case ERole::Clavicle:
@@ -498,9 +499,9 @@ bool FFallAnimProxy::Evaluate(FPoseContext& Output)
 			if (SpringValid[i])
 			{
 				SpringW[i] += GustKick * 1.2f + HitAxis * 1.4f;
-				if (L.bArm && L.bRight && In.Recoil > 0.f) SpringW[i] += (L.TU ^ Chest[kUp]).GetSafeNormal() * -In.Recoil * 14.f;
+				if (L.bArm && L.bRight && In.Recoil > 0.f) SpringW[i] += (L.TU ^ Chest[kUp]).GetSafeNormal() * -In.Recoil * 20.f;
 			}
-			Rot = Flutter(i, G.NoiseDeg.Y * 0.3f * In.Wind * NoiseMul) * Spring(i, Noise(i, FMath::Lerp(G.NoiseDeg.X, G.NoiseDeg.Y, In.Wind) * NoiseMul) * T, G, StiffMul * (bKickLeg ? 3.f : 1.f), Dt);
+			Rot = Flutter(i, G.NoiseDeg.Y * 0.3f * In.Wind * FlutterMul) * Spring(i, Noise(i, FMath::Lerp(G.NoiseDeg.X, G.NoiseDeg.Y, In.Wind) * NoiseMul) * T, G, StiffMul * (bKickLeg ? 3.f : 1.f), Dt);
 			break;
 		}
 		case ERole::Lower:
@@ -516,7 +517,7 @@ bool FFallAnimProxy::Evaluate(FPoseContext& Output)
 			const FFallBoneGroupTuning& G = D->Group(EFallBoneGroup::LowerLimb);
 			const bool bKickLeg = !L.bArm && In.KickTime >= 0.f && L.bRight == In.bKickRight;
 			if (SpringValid[i]) SpringW[i] += GustKick * 1.5f + HitAxis * 1.2f;
-			Rot = Flutter(i, G.NoiseDeg.Y * 0.3f * In.Wind * NoiseMul) * Spring(i, Noise(i, FMath::Lerp(G.NoiseDeg.X, G.NoiseDeg.Y, In.Wind) * NoiseMul) * T, G, StiffMul * (bKickLeg ? 3.f : 1.f), Dt);
+			Rot = Flutter(i, G.NoiseDeg.Y * 0.3f * In.Wind * FlutterMul) * Spring(i, Noise(i, FMath::Lerp(G.NoiseDeg.X, G.NoiseDeg.Y, In.Wind) * NoiseMul) * T, G, StiffMul * (bKickLeg ? 3.f : 1.f), Dt);
 			break;
 		}
 		case ERole::End:
@@ -532,7 +533,7 @@ bool FFallAnimProxy::Evaluate(FPoseContext& Output)
 				SpringW[i] += GustKick * 2.f;
 				if (L.bArm && L.bRight && In.Recoil > 0.f) SpringW[i] += (L.TL ^ Chest[kUp]).GetSafeNormal() * -In.Recoil * 22.f;
 			}
-			Rot = Flutter(i, G.NoiseDeg.Y * 0.3f * In.Wind * NoiseMul) * Spring(i, Noise(i, FMath::Lerp(G.NoiseDeg.X, G.NoiseDeg.Y, In.Wind) * NoiseMul) * T, G, StiffMul, Dt);
+			Rot = Flutter(i, G.NoiseDeg.Y * 0.3f * In.Wind * FlutterMul) * Spring(i, Noise(i, FMath::Lerp(G.NoiseDeg.X, G.NoiseDeg.Y, In.Wind) * NoiseMul) * T, G, StiffMul, Dt);
 			break;
 		}
 		case ERole::Finger:

@@ -21,17 +21,17 @@ void UFallEnemyData::ApplyDefaults(UFallEnemyData* D, EFallEnemyType Type)
 	{
 	case EFallEnemyType::Shooter:
 		D->Health = 55.f; D->TelegraphTime = 0.6f; D->BurstCount = 5; D->ShotInterval = 0.1f; D->Cooldown = FVector2D(2.4f, 3.6f);
-		D->Damage = 6.f; D->SpreadDeg = 2.f; D->AimLag = 0.3f; D->Distance = FVector2D(14.f, 24.f); D->Height = 0.f; D->Agility = FVector2D(9.f, 18.f);
+		D->Damage = 5.f; D->SpreadDeg = 2.f; D->AimLag = 0.3f; D->Distance = FVector2D(14.f, 24.f); D->Height = 0.f; D->Agility = FVector2D(9.f, 18.f);
 		D->SuitColor = FLinearColor(0.09f, 0.03f, 0.025f); D->AccentColor = FLinearColor(1.f, 0.1f, 0.05f);
 		break;
 	case EFallEnemyType::Wingsuiter:
 		D->Health = 45.f; D->TelegraphTime = 1.5f; D->BurstCount = 4; D->ShotInterval = 0.09f; D->Cooldown = FVector2D(3.5f, 4.5f);
-		D->Damage = 7.f; D->SpreadDeg = 2.5f; D->AimLag = 0.2f; D->Distance = FVector2D(60.f, 75.f); D->Height = 12.f; D->Agility = FVector2D(38.f, 20.f);
+		D->Damage = 6.f; D->SpreadDeg = 2.5f; D->AimLag = 0.2f; D->Distance = FVector2D(60.f, 75.f); D->Height = 12.f; D->Agility = FVector2D(38.f, 20.f);
 		D->SuitColor = FLinearColor(0.12f, 0.02f, 0.02f); D->AccentColor = FLinearColor(1.f, 0.85f, 0.2f);
 		break;
 	case EFallEnemyType::Heavy:
 		D->Health = 140.f; D->TelegraphTime = 1.0f; D->BurstCount = 16; D->ShotInterval = 0.1f; D->Cooldown = FVector2D(2.2f, 3.f);
-		D->Damage = 5.f; D->SpreadDeg = 1.8f; D->AimLag = 0.45f; D->Distance = FVector2D(22.f, 30.f); D->Height = -4.f; D->Agility = FVector2D(4.f, 12.f);
+		D->Damage = 4.f; D->SpreadDeg = 1.8f; D->AimLag = 0.45f; D->Distance = FVector2D(22.f, 30.f); D->Height = -4.f; D->Agility = FVector2D(4.f, 12.f);
 		D->SuitColor = FLinearColor(0.05f, 0.05f, 0.045f); D->AccentColor = FLinearColor(1.f, 0.1f, 0.05f);
 		break;
 	case EFallEnemyType::Target:

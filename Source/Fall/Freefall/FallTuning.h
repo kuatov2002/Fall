@@ -200,7 +200,7 @@ public:
 
 	/** Kick timeline, seconds: chamber (anticipation), strike, recover. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Kick")
-	FVector KickTimes = FVector(0.3f, 0.1f, 0.55f);
+	FVector KickTimes = FVector(0.36f, 0.1f, 0.55f);
 
 	const FFallPose* FindPose(FName Name) const;
 	static const UFallAnimData* Resolve(const UFallAnimData* Maybe) { return Maybe ? Maybe : ::GetDefault<UFallAnimData>(); }
@@ -226,6 +226,10 @@ public:
 	/** How fast fall speed approaches the stance target when speeding up, 1/s. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Speed")
 	float SpeedUpRate = 0.8f;
+
+	/** Speeding up can never beat gravity: max acceleration, m/s^2. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Speed")
+	float MaxAccel = 9.8f;
 
 	/** How fast fall speed approaches the target when slowing down, 1/s (drag is stronger than gravity). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Speed")

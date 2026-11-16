@@ -79,6 +79,12 @@ AFallBody::AFallBody()
 	// Chest strap tails.
 	Add("spine_04", FVector(6, 15, 0), FVector(0, 0.3f, -1), FVector(1, 0, 0), 3, 6.f, FVector2D(3.f, 2.5f), Webbing, 10000.f);
 	Add("spine_04", FVector(-6, 15, 0), FVector(0, 0.3f, -1), FVector(1, 0, 0), 3, 6.f, FVector2D(3.f, 2.5f), Webbing, 10000.f);
+	// Suit fabric flapping on the forearms and shins: the cheapest strong cue of airspeed.
+	const FLinearColor Fabric(0.03f, 0.045f, 0.09f);
+	Add("lowerarm_l", FVector(0, -5, -6), FVector(0, -0.6f, -0.8f), FVector(0, 0, 1), 3, 6.f, FVector2D(9.f, 6.f), Fabric, 120000.f, 0.5f);
+	Add("lowerarm_r", FVector(0, -5, -6), FVector(0, -0.6f, -0.8f), FVector(0, 0, 1), 3, 6.f, FVector2D(9.f, 6.f), Fabric, 120000.f, 0.5f);
+	Add("calf_l", FVector(0, -6, -10), FVector(0, -0.7f, -0.7f), FVector(0, 0, 1), 3, 6.f, FVector2D(10.f, 7.f), Fabric, 120000.f, 0.5f);
+	Add("calf_r", FVector(0, -6, -10), FVector(0, -0.7f, -0.7f), FVector(0, 0, 1), 3, 6.f, FVector2D(10.f, 7.f), Fabric, 120000.f, 0.5f);
 	// Bridle trailing from the empty harness.
 	Add("spine_03", FVector(0, -16, 4), FVector(0, -0.3f, -1), FVector(1, 0, 0), 7, 8.f, FVector2D(3.f, 2.f), FLinearColor(0.2f, 0.075f, 0.02f), 80000.f, 0.1f);
 }
@@ -131,7 +137,6 @@ void AFallBody::BeginPlay()
 	BuildOutfit();
 	if (UMaterialInterface* Lit = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_LitTwoSided.M_FF_LitTwoSided")))
 	{
-		if (Straps->Straps.Num() > 0) Straps->Straps[0].Color = AccentColor;
 		Straps->Setup(Mesh, Lit);
 	}
 	PrevMeshRot = Mesh->GetComponentQuat();
@@ -201,6 +206,7 @@ void AFallBody::ResetBody()
 	AttW = FVector::ZeroVector;
 	PendingHit = FVector::ZeroVector;
 	FlashAmount = 0.f;
+	CanopyClock = 0.f;
 	if (Straps) Straps->ResetSim();
 }
 
@@ -240,7 +246,7 @@ bool AFallBody::ReceiveHit(const FVector& PushDirWorld, float Strength, float Da
 	const FVector ChestLocal = AttQ.RotateVector(FVector::UpVector);
 	AttW += (ChestLocal ^ LocalPush) * Strength * 5.f;
 	Health = FMath::Max(0.f, Health - Damage);
-	Flash(FLinearColor(1.f, 0.15f, 0.05f), 2.f + Strength);
+	Flash(FLinearColor(1.f, 0.95f, 0.9f), 2.f + Strength);
 	return Health <= 0.f;
 }
 
@@ -304,11 +310,15 @@ void AFallBody::UpdateBody(float Dt)
 	const float Canopy = OverridePose == "Canopy" ? OverrideWeight : 0.f;
 	// Constant small balance corrections of the whole body, stronger with airspeed.
 	const float Tw = GetWorld()->GetTimeSeconds();
-	const float Sway = 3.f * In.Wind;
+	const float Sway = (4.5f + 3.f * FMath::Max(-Dive, 0.f)) * In.Wind;
 	FQuat AttGoal = FQuat(FVector::ForwardVector, FMath::DegreesToRadians(Sway * FMath::PerlinNoise1D(Tw * 0.45f + Seed * 0.1f)))
 		* FQuat(FVector::RightVector, FMath::DegreesToRadians(Sway * 0.7f * FMath::PerlinNoise1D(Tw * 0.38f + Seed * 0.1f + 17.f))) * AttFinal;
 	if (Canopy > 0.f)
 	{
+		// Pendulum under the canopy: a decaying fore-aft swing after the opening shock, then a slow sway.
+		CanopyClock += Dt;
+		const float Swing = 18.f * FMath::Exp(-CanopyClock / 2.2f) * FMath::Sin(2.f * PI * 0.55f * CanopyClock);
+		AttGoal = FQuat(FVector::RightVector, FMath::DegreesToRadians(Swing * Canopy)) * AttGoal;
 		const float T = GetWorld()->GetTimeSeconds();
 		AttGoal = FQuat(FVector::ForwardVector, FMath::DegreesToRadians(7.f * Canopy * FMath::PerlinNoise1D(T * 0.35f + Seed)))
 			* FQuat(FVector::RightVector, FMath::DegreesToRadians(6.f * Canopy * FMath::PerlinNoise1D(T * 0.3f + Seed + 5.f))) * AttGoal;

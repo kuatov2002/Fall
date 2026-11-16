@@ -94,7 +94,8 @@ void AFallAirship::Breakup()
 			if (D)
 			{
 				// Chunks start at the airship's (zero) fall speed and accelerate to their own terminal speed.
-				D->Mover->FallSpeed = FMath::FRandRange(-300.f, 300.f);
+				// The blast throws chunks down: they overtake the falling player a few seconds later.
+				D->Mover->FallSpeed = FMath::FRandRange(1000.f, 3500.f);
 				D->Mover->FallAccel = 980.f;
 				D->Mover->TerminalSpeed = FMath::FRandRange(C.Terminal.X, C.Terminal.Y) * 100.f;
 				D->Mover->KillDistance = 60000.f;

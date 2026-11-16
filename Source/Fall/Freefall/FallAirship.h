@@ -19,7 +19,7 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 
 	/** Seconds before it breaks apart. */
-	UPROPERTY(EditAnywhere, Category = "Airship") float BreakupDelay = 2.2f;
+	UPROPERTY(EditAnywhere, Category = "Airship") float BreakupDelay = 1.6f;
 
 protected:
 	virtual void BeginPlay() override;

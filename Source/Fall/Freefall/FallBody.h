@@ -85,7 +85,7 @@ public:
 
 	/** Suit tint, readable silhouette colour. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fall")
-	FLinearColor SuitColor = FLinearColor(0.012f, 0.02f, 0.05f);
+	FLinearColor SuitColor = FLinearColor(0.02f, 0.03f, 0.07f);
 
 	/** Faint red pulse at low health. */
 	void PulseLowHealth(float Amount) { LowPulse = FMath::Max(LowPulse, Amount); }
@@ -188,6 +188,7 @@ protected:
 	float FlashAmount = 0.f;
 	float LowPulse = 0.f;
 	float LimpSpin = 0.f;
+	float CanopyClock = 0.f;
 	FLinearColor FlashColor = FLinearColor::White;
 	TArray<FVector> Trails[4];
 	int32 Seed = 0;
