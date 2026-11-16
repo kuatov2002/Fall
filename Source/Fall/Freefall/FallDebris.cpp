@@ -306,6 +306,21 @@ void AFallDebrisSpawner::Tick(float Dt)
 			FW->NoteEvent("DebrisPass");
 			++FW->NearPasses;
 		}
+		// Never let the player sink into a piece, even between hits.
+		if (AFallPlayer* Pl = Cast<AFallPlayer>(FW->Player.Get()))
+		{
+			if (Pl->Held.Get() != D)
+			{
+				const float Dd = D->DistanceTo(Pl->GetActorLocation());
+				if (Dd < 40.f)
+				{
+					FVector Nn;
+					const FVector Sp = D->ClosestSurfacePoint(Pl->GetActorLocation(), &Nn);
+					const FVector Out = (Pl->GetActorLocation() - Sp).GetSafeNormal(UE_SMALL_NUMBER, Nn);
+					Pl->AddActorWorldOffset(Out * (42.f - Dd));
+				}
+			}
+		}
 		if (Now - D->LastHit < 0.6f) continue;
 		for (TActorIterator<AFallBody> B(GetWorld()); B; ++B)
 		{

@@ -10,6 +10,8 @@
 #include "FallCombatData.h"
 #include "FreefallGameMode.h"
 #include "FallMenu.h"
+#include "Components/BoxComponent.h"
+#include "FallDirector.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -40,6 +42,10 @@ AFallPlayer::AFallPlayer()
 	// Slightly darker and punchier than the default auto exposure: snow and cloud stop clipping, the dark suit reads.
 	Camera->PostProcessSettings.bOverride_AutoExposureBias = true;
 	Camera->PostProcessSettings.AutoExposureBias = -0.6f;
+	Camera->PostProcessSettings.bOverride_AutoExposureSpeedDown = true;
+	Camera->PostProcessSettings.AutoExposureSpeedDown = 0.6f;
+	Camera->PostProcessSettings.bOverride_AutoExposureSpeedUp = true;
+	Camera->PostProcessSettings.AutoExposureSpeedUp = 1.2f;
 	Camera->PostProcessSettings.bOverride_ColorContrast = true;
 	Camera->PostProcessSettings.ColorContrast = FVector4(1.08f, 1.08f, 1.08f, 1.f);
 
@@ -246,7 +252,7 @@ AFallDebris* AFallPlayer::FindGrabbable() const
 	for (TActorIterator<AFallDebris> It(GetWorld()); It; ++It)
 	{
 		if (!It->bGrabbable || It->Holder.IsValid()) continue;
-		const float D = It->DistanceTo(GetActorLocation());
+		const float D = It->DistanceTo(GetActorLocation()) - It->Box->GetUnscaledBoxExtent().Size() * 0.15f; // big pieces win ties
 		if (D < BestD) { BestD = D; Best = *It; }
 	}
 	return Best;
@@ -310,6 +316,13 @@ void AFallPlayer::UpdateHold(float Dt)
 	VelocityH = P->Mover->VelocityH;
 	AddActorWorldOffset(VelocityH * Dt);
 
+	// Keep the horizon while holding on: the camera frames the threat beyond the cover, not the ground.
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		FRotator R = PC->GetControlRotation();
+		R.Pitch = FMath::Clamp(FRotator::NormalizeAxis(R.Pitch), -40.f, 35.f);
+		PC->SetControlRotation(R);
+	}
 	// Face the surface: body front into the surface, body up towards the sky (or the camera when the face is horizontal).
 	FVector UpHint = FVector::UpVector - N * (N | FVector::UpVector);
 	if (UpHint.SizeSquared() < 0.05f) UpHint = Camera->GetForwardVector() - N * (N | Camera->GetForwardVector());
@@ -455,7 +468,7 @@ bool AFallPlayer::ReceiveHit(const FVector& PushDirWorld, float Strength, float 
 {
 	if (bDied) return false;
 	const bool bDead = Super::ReceiveHit(PushDirWorld, Strength, Damage);
-	Flash(FLinearColor(1.f, 0.12f, 0.05f), 2.f + Strength); // the player's own damage reads red
+	Flash(FLinearColor(1.f, 0.12f, 0.05f), 0.6f + 0.3f * Strength); // the player's own damage reads red, on the rim
 	LastDamage = GetWorld()->GetTimeSeconds();
 	DamagePulse = FMath::Min(1.f, DamagePulse + Damage / 30.f + 0.25f);
 	AddShake(0.15f + 0.1f * Strength);
@@ -522,7 +535,7 @@ void AFallPlayer::UpdateCombat(float Dt)
 			AddShake(0.5f);
 			FallSynth::Play(this, FallSynth::EKind::Kick, E->GetActorLocation(), 1.f);
 			FallSynth::Play(this, FallSynth::EKind::HitBody, E->GetActorLocation(), 1.f, 0.75f);
-			if (AFallFX* FX = AFallFX::Get(this)) FX->Flash(E->GetActorLocation(), 60.f, FLinearColor(1.f, 0.9f, 0.7f), 0.06f);
+			if (AFallFX* FX = AFallFX::Get(this)) FX->Sparks(E->GetActorLocation(), Push, 20, FLinearColor(1.f, 0.9f, 0.7f), 2500.f);
 			if (UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this)) FW->NoteEvent("Kick");
 		}
 	}
@@ -552,6 +565,7 @@ void AFallPlayer::UpdateCombat(float Dt)
 			AddShake(0.6f);
 			FallSynth::Play(this, FallSynth::EKind::Kick, GetActorLocation(), 1.f, 0.7f);
 			if (UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this)) FW->NoteEvent("ParachuteTaken");
+			if (AFallDirector* Dir = AFallDirector::Get(this)) Dir->MarkParachuteCheckpoint();
 		}
 		if (RobTime > 1.0f) { RobTime = -1.f; RobTarget = nullptr; Control.HandWeight[0] = Control.HandWeight[1] = 0.f; }
 	}
@@ -594,7 +608,17 @@ void AFallPlayer::UpdateCamera(float Dt)
 	// and only the world around it stretches.
 	const float Fov = Camera->FieldOfView;
 	const float Dolly = FMath::Tan(FMath::DegreesToRadians(M->FOV.X * 0.5f)) / FMath::Tan(FMath::DegreesToRadians((Fov - FovKick) * 0.5f));
-	const float DiveBias = M->DivePitchBias * FMath::Max(Dive, 0.f) - 7.f * FMath::Clamp(1.f - FMath::Abs(Dive) * 2.f, 0.f, 1.f);
+	float DiveBias = M->DivePitchBias * FMath::Max(Dive, 0.f) - 7.f * FMath::Clamp(1.f - FMath::Abs(Dive) * 2.f, 0.f, 1.f);
+	// Chase framing: when the parachute carrier is below and ahead, the camera leans towards it.
+	for (TActorIterator<AFallEnemy> It(GetWorld()); It; ++It)
+	{
+		if (It->GetType() != EFallEnemyType::Target || bHasParachute || !(It->State == EFallEnemyState::Flee || It->State == EFallEnemyState::Stunned)) continue;
+		const FVector To = It->GetActorLocation() - Camera->GetComponentLocation();
+		const float WantPitch = FMath::RadiansToDegrees(FMath::Atan2(To.Z, FVector2D(To.X, To.Y).Size()));
+		ChaseBias = FMath::FInterpTo(ChaseBias, FMath::Clamp(WantPitch - CR.Pitch, -40.f, 0.f) * 0.45f, Dt, 1.5f);
+	}
+	if (bHasParachute) ChaseBias = FMath::FInterpTo(ChaseBias, 0.f, Dt, 1.5f);
+	DiveBias += ChaseBias;
 	CameraArm->SetWorldRotation(FRotator(CR.Pitch + DiveBias, CR.Yaw, 0.f) + Shake);
 	ArmPunch = FMath::FInterpTo(ArmPunch, ArmPunchTarget, Dt, 7.f);
 	ArmPunchTarget = FMath::FInterpTo(ArmPunchTarget, 0.f, Dt, 2.5f);
@@ -607,8 +631,8 @@ void AFallPlayer::UpdateCamera(float Dt)
 	if (CanopyCam > 0.001f)
 	{
 		// Low and behind, looking up: the body in the lower third, the canopy above it.
-		CameraArm->SetWorldRotation(FRotator(FMath::Lerp(CR.Pitch + DiveBias, 25.f, CanopyCam), CR.Yaw, 0.f) + Shake);
-		CameraArm->TargetArmLength *= FMath::Lerp(1.f, 2.8f, CanopyCam);
+		CameraArm->SetWorldRotation(FRotator(FMath::Lerp(CR.Pitch + DiveBias, 30.f, CanopyCam), CR.Yaw, 0.f) + Shake);
+		CameraArm->TargetArmLength *= FMath::Lerp(1.f, 3.3f, CanopyCam);
 		CameraArm->TargetOffset += FVector(0.f, 0.f, 200.f * CanopyCam);
 		Camera->SetFieldOfView(Camera->FieldOfView + 10.f * CanopyCam);
 	}

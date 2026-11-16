@@ -128,7 +128,10 @@ void AFallFX::Tracer(const FVector& A, const FVector& B, const FLinearColor& Col
 {
 	FLine* L = TakeLine();
 	if (!L) return;
-	L->A = A; L->B = B; L->Age = 0.f; L->Life = 0.07f; L->Width = Width; L->bActive = true; L->bPersistent = false; L->Intensity = 3.f;
+	const FVector Dir = (B - A).GetSafeNormal();
+	const float Len = (B - A).Size();
+	const float Start = FMath::FRandRange(0.f, FMath::Max(Len - 900.f, 0.f));
+	L->A = A + Dir * Start; L->B = A + Dir * FMath::Min(Start + 900.f, Len); L->Age = 0.f; L->Life = 0.06f; L->Width = Width; L->bActive = true; L->bPersistent = false; L->Intensity = 6.f;
 	if (L->MID) L->MID->SetVectorParameterValue("Color", Color);
 	L->Comp->SetVisibility(true);
 }

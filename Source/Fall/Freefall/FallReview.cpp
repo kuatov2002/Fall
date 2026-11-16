@@ -92,7 +92,8 @@ void AFallReview::BotFull(float Dt, FFallInputFrame& Out)
 		Out.Dive = To.Z < -300.f ? 1.f : (To.Z > 300.f ? -1.f : 0.f);
 		const FVector Local = P->GetActorQuat().UnrotateVector(FVector(To.X, To.Y, 0.f));
 		Out.Slide = FMath::Clamp(Local.Y / 600.f, -1.f, 1.f);
-		if (Target->CanBeRobbed() && To.Size() < 380.f) Out.bKick = !LastBot.bKick;
+		if (Target->CanBeRobbed() && To.Size() < 600.f) Out.bKick = !LastBot.bKick;
+		if (Target->CanBeRobbed()) { Out.Dive = To.Z < -150.f ? 1.f : (To.Z > 150.f ? -1.f : 0.f); Out.Slide = FMath::Clamp(Local.Y / 300.f, -1.f, 1.f); }
 	}
 	if (P->bHasParachute) { Out.Dive = 0.f; Out.Slide = 0.f; Aim = nullptr; }
 
@@ -105,7 +106,7 @@ void AFallReview::BotFull(float Dt, FFallInputFrame& Out)
 		const float DPitch = FRotator::NormalizeAxis(Want.Pitch - CamRot.Pitch);
 		Out.Look = FVector2D(FMath::Clamp(DYaw * 6.f * Dt, -6.f, 6.f), FMath::Clamp(DPitch * 6.f * Dt, -4.f, 4.f));
 		const float Err = FMath::Sqrt(DYaw * DYaw + DPitch * DPitch);
-		Out.bFire = Err < 4.f && FVector::Dist(Aim->GetActorLocation(), PP) < 4000.f;
+		Out.bFire = Err < 4.f && FVector::Dist(Aim->GetActorLocation(), PP) < 4000.f && !Aim->CanBeRobbed();
 		if (FVector::Dist(Aim->GetActorLocation(), PP) < 380.f && !Aim->CanBeRobbed()) Out.bKick = !LastBot.bKick;
 	}
 	else

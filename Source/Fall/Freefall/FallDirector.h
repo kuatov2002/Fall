@@ -53,6 +53,8 @@ public:
 	virtual bool ShouldTickIfViewportsOnly() const override { return true; }
 
 	bool IsUnderCanopy() const { return bCanopy; }
+	/** The player took the parachute: restarts from now keep it. */
+	void MarkParachuteCheckpoint() { bCheckpointParachute = true; Checkpoint = Time; }
 	bool HasEnded() const { return bEnded; }
 
 protected:
@@ -78,5 +80,9 @@ protected:
 	int32 Risers[4] = {INDEX_NONE, INDEX_NONE, INDEX_NONE, INDEX_NONE};
 	bool bEventsEnabled = true;
 	bool bStarted = false;
+	bool bCheckpointParachute = false;
+	float DeathTime = -1.f;
+	bool bLanded = false;
+	float LandTime = 0.f;
 	float StartTime = 0.f;
 };

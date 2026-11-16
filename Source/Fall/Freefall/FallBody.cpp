@@ -320,7 +320,7 @@ void AFallBody::UpdateBody(float Dt)
 		const float Swing = 18.f * FMath::Exp(-CanopyClock / 2.2f) * FMath::Sin(2.f * PI * 0.55f * CanopyClock);
 		AttGoal = FQuat(FVector::RightVector, FMath::DegreesToRadians(Swing * Canopy)) * AttGoal;
 		const float T = GetWorld()->GetTimeSeconds();
-		AttGoal = FQuat(FVector::ForwardVector, FMath::DegreesToRadians(7.f * Canopy * FMath::PerlinNoise1D(T * 0.35f + Seed)))
+		AttGoal = FQuat(FVector::ForwardVector, FMath::DegreesToRadians(Canopy * (7.f * FMath::PerlinNoise1D(T * 0.35f + Seed) + 5.f * FMath::Sin(2.f * PI * 0.4f * T))))
 			* FQuat(FVector::RightVector, FMath::DegreesToRadians(6.f * Canopy * FMath::PerlinNoise1D(T * 0.3f + Seed + 5.f))) * AttGoal;
 	}
 	if (OverridePose == "Limp" && OverrideWeight > 0.5f)
@@ -370,7 +370,7 @@ void AFallBody::UpdateBody(float Dt)
 		LowPulse = FMath::FInterpTo(LowPulse, 0.f, Dt, 3.f);
 		const float Fl = FMath::Clamp(FlashAmount, 0.f, 1.f);
 		FlashMID->SetScalarParameterValue("Intensity", RimIntensity + FlashAmount + LowPulse * 2.f);
-		FlashMID->SetScalarParameterValue("Rim", 1.f - Fl * 0.7f);
+		FlashMID->SetScalarParameterValue("Rim", 1.f - Fl * 0.35f);
 		FlashMID->SetVectorParameterValue("Color", FMath::Lerp(FMath::Lerp(RimColor, FLinearColor(1.f, 0.1f, 0.05f), FMath::Clamp(LowPulse * 3.f, 0.f, 1.f)), FlashColor, Fl));
 	}
 

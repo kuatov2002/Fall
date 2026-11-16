@@ -156,7 +156,7 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<UInstancedStaticMeshComponent> Streaks;
 
 	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumStreaks = 110;
-	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D StreakRadius = FVector2D(90.f, 1100.f);
+	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D StreakRadius = FVector2D(280.f, 1300.f);
 	UPROPERTY(EditAnywhere, Category = "Fall") float StreakHalfHeight = 2600.f;
 	/** Streak length = fall speed * this, seconds of motion blur. */
 	UPROPERTY(EditAnywhere, Category = "Fall") float StreakBlur = 0.03f;

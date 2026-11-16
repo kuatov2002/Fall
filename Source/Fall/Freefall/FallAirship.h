@@ -28,6 +28,7 @@ protected:
 
 	UPROPERTY() TObjectPtr<UFallMoverComponent> Mover;
 	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Parts;
+	UPROPERTY() TObjectPtr<class UPointLightComponent> Glow;
 	float Age = 0.f;
 	float FireTimer = 0.f;
 	bool bBroken = false;

@@ -137,10 +137,10 @@ UFallAnimData::UFallAnimData()
 {
 	// Body space: X out, Y front (belly), Z up (head). Left side authored, right mirrored unless stated.
 	// Belly-to-earth box: arms ~90 deg at the shoulder, elbows 90-120, hands near head level; hips low, shins up into the sky.
-	Poses.Add(Pose("Belly", Limb({0.95f, -0.20f, 0.22f}, {0.35f, -0.32f, 0.88f}, 0.f, 0.3f, 8.f), Limb({0.30f, -0.20f, -0.93f}, {0.12f, -0.97f, 0.12f}, 30.f), 28.f, 38.f, 90.f));
+	Poses.Add(Pose("Belly", Limb({0.95f, -0.20f, 0.22f}, {0.35f, -0.32f, 0.88f}, 0.f, 0.3f, 8.f), Limb({0.30f, -0.20f, -0.93f}, {0.12f, -0.95f, -0.10f}, 30.f), 28.f, 38.f, 90.f));
 	// Brake: bigger box, elbows open, shins pushed into the wind, head up.
 	{
-		FFallPose P = Pose("Brake", Limb({0.88f, -0.40f, 0.26f}, {0.55f, -0.30f, 0.78f}, -25.f, 0.1f, 25.f), Limb({0.45f, 0.35f, -0.82f}, {0.35f, -0.40f, -0.85f}, 15.f), 14.f, 48.f, 84.f);
+		FFallPose P = Pose("Brake", Limb({0.88f, -0.40f, 0.26f}, {0.55f, -0.30f, 0.78f}, -25.f, 0.1f, 25.f), Limb({0.45f, 0.60f, -0.66f}, {0.35f, -0.25f, -0.90f}, 15.f), 14.f, 48.f, 84.f);
 		P.NoiseScale = 1.4f;
 		Poses.Add(P);
 	}
@@ -151,7 +151,7 @@ UFallAnimData::UFallAnimData()
 		Poses.Add(P);
 	}
 	// Head-down: body vertical, arms out at shoulder height with hands ahead of the shoulders, legs apart with soft knees.
-	Poses.Add(Pose("HeadDown", Limb({0.92f, 0.20f, -0.15f}, {0.60f, 0.70f, -0.30f}, -5.f, 0.2f, 5.f), Limb({0.22f, -0.05f, -0.97f}, {0.12f, -0.50f, -0.86f}, 40.f), 6.f, 45.f, 166.f));
+	Poses.Add(Pose("HeadDown", Limb({0.90f, 0.20f, 0.35f}, {0.75f, 0.35f, -0.55f}, -5.f, 0.2f, 5.f), Limb({0.22f, -0.05f, -0.97f}, {0.12f, -0.55f, -0.83f}, 40.f), 6.f, 45.f, 166.f));
 	// Bank left: left arm drops into the flow (rudder), right arm rises, chest twists, legs trail.
 	{
 		FFallPose P;
@@ -166,7 +166,7 @@ UFallAnimData::UFallAnimData()
 	}
 	// Grab: reach forward to the debris, knees tucked, chest rounded towards the surface.
 	{
-		FFallPose P = Pose("Grab", Limb({0.80f, 0.30f, 0.52f}, {0.10f, 0.75f, 0.65f}, 0.f, 0.8f, 10.f, 12.f), Limb({0.30f, 0.62f, -0.72f}, {0.10f, -0.80f, -0.59f}, 25.f), -5.f, 28.f, 88.f);
+		FFallPose P = Pose("Grab", Limb({0.45f, 0.60f, 0.65f}, {0.10f, 0.80f, 0.60f}, 0.f, 0.8f, 10.f, 12.f), Limb({0.30f, 0.85f, -0.43f}, {0.10f, -0.75f, -0.65f}, 25.f), -5.f, 28.f, 88.f);
 		P.NoiseScale = 3.f;
 		Poses.Add(P);
 	}
@@ -193,14 +193,14 @@ UFallAnimData::UFallAnimData()
 	Poses.Add(Pose("Wingsuit", Limb({0.80f, -0.10f, -0.59f}, {0.80f, 0.06f, -0.60f}, 0.f, 0.1f, 0.f), Limb({0.42f, -0.05f, -0.91f}, {0.40f, -0.05f, -0.92f}, 60.f), 10.f, 35.f, 100.f));
 	// Limp: stunned or dead. Loose springs and a lot of wind noise.
 	{
-		FFallPose P = Pose("Limp", Limb({0.70f, -0.50f, 0.20f}, {0.60f, -0.60f, -0.20f}, 20.f, 0.4f, 0.f), Limb({0.35f, -0.30f, -0.88f}, {0.25f, -0.60f, -0.75f}, 10.f), -10.f, -20.f, 100.f);
+		FFallPose P = Pose("Limp", Limb({0.60f, -0.75f, 0.25f}, {0.45f, -0.85f, 0.10f}, 20.f, 0.4f, 0.f), Limb({0.30f, -0.55f, -0.78f}, {0.20f, -0.80f, -0.55f}, 10.f), -10.f, -20.f, 100.f);
 		P.Stiffness = 0.18f;
 		P.NoiseScale = 3.5f;
 		Poses.Add(P);
 	}
 	// Under canopy: upright, hands up on the toggles, legs hanging.
 	{
-		FFallPose P = Pose("Canopy", Limb({0.60f, 0.40f, 0.20f}, {0.25f, 0.55f, 0.80f}, 0.f, 0.9f, 12.f), Limb({0.15f, 0.50f, -0.85f}, {0.10f, -0.12f, -0.99f}, 25.f), -6.f, 5.f, 0.f);
+		FFallPose P = Pose("Canopy", Limb({0.60f, 0.40f, 0.20f}, {0.25f, 0.55f, 0.80f}, 0.f, 0.9f, 12.f), Limb({0.15f, 0.68f, -0.72f}, {0.10f, -0.15f, -0.98f}, 25.f), -6.f, 5.f, 0.f);
 		P.NoiseScale = 2.5f;
 		Poses.Add(P);
 	}

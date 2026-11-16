@@ -59,6 +59,11 @@ public:
 
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> Pack;
 
+	/** At most this many attack warnings at the same time (readability). */
+	static int32 ActiveTelegraphs;
+	int32 StunCount = 0;
+	float FlareTimer = 0.f;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;

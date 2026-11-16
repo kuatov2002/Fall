@@ -42,13 +42,15 @@ void UFallEnemyData::ApplyDefaults(UFallEnemyData* D, EFallEnemyType Type)
 	}
 }
 
+int32 AFallEnemy::ActiveTelegraphs = 0;
+
 AFallEnemy::AFallEnemy()
 {
 	AutoPossessAI = EAutoPossessAI::Disabled;
 	AIControllerClass = nullptr;
-	RimColor = FLinearColor(1.f, 0.35f, 0.25f);
+	RimColor = FLinearColor(1.f, 0.3f, 0.2f);
 	HarnessColor = FLinearColor(0.02f, 0.02f, 0.022f);
-	RimIntensity = 0.08f;
+	RimIntensity = 0.3f;
 }
 
 AFallEnemy* AFallEnemy::Spawn(UWorld* World, EFallEnemyType Type, const FVector& RelPos, UFallEnemyData* InData)
@@ -137,6 +139,7 @@ void AFallEnemy::BeginPlay()
 
 void AFallEnemy::EndPlay(const EEndPlayReason::Type Reason)
 {
+	if (State == EFallEnemyState::Telegraph && GetType() == EFallEnemyType::Shooter) ActiveTelegraphs = FMath::Max(0, ActiveTelegraphs - 1);
 	SetLaser(false, FVector::ZeroVector, FVector::ZeroVector);
 	if (AFallDebris* P = Platform.Get())
 	{
@@ -153,6 +156,16 @@ void AFallEnemy::BuildOutfit()
 	// Same harness, red visor; the heavy wears a bulkier vest; the target carries the only parachute container.
 	AttachProp("head", TEXT("Sphere"), FVector(0, -1.5f, 9.5f), FRotator::ZeroRotator, FVector(23.f, 26.f, 23.f), FLinearColor(0.03f, 0.03f, 0.03f), 0.35f, 0.2f);
 	AttachProp("head", TEXT("Cube"), FVector(0, 9.5f, 6.f), FRotator::ZeroRotator, FVector(17.f, 4.f, 5.f), Data ? Data->AccentColor * 2.f : FLinearColor::Red, 0.1f, 0.6f);
+	if (UStaticMeshComponent* Beacon = AttachProp("head", TEXT("Sphere"), FVector(0, -2.f, 22.f), FRotator::ZeroRotator, FVector(7.f), FLinearColor::Black, 0.3f, 0.f))
+	{
+		if (UMaterialInterface* U = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Unlit.M_FF_Unlit")))
+		{
+			UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(U, this);
+			MID->SetVectorParameterValue("Color", Data ? Data->AccentColor : FLinearColor::Red);
+			MID->SetScalarParameterValue("Intensity", 30.f);
+			Beacon->SetMaterial(0, MID);
+		}
+	}
 	for (int32 s = -1; s <= 1; s += 2)
 	{
 		AttachProp("spine_05", TEXT("Cube"), FVector(s * 9.f, 0.f, 9.f), FRotator::ZeroRotator, FVector(4.f, 30.f, 3.f), HarnessColor);
@@ -249,7 +262,10 @@ void AFallEnemy::SetLaser(bool bOn, const FVector& From, const FVector& To)
 {
 	if (AFallFX* FX = AFallFX::Get(this))
 	{
-		LaserHandle = FX->Beam(LaserHandle, From, To, FLinearColor(1.f, 0.04f, 0.02f), 1.4f, bOn);
+		// The warning starts as a hairline and thickens with a flicker as the shot comes closer.
+		const float A = FMath::Clamp(StateTime / FMath::Max(Data ? Data->TelegraphTime : 0.6f, 0.1f), 0.f, 1.f);
+		const float Flicker = 0.6f + 0.4f * FMath::Abs(FMath::Sin(StateTime * 40.f));
+		LaserHandle = FX->Beam(LaserHandle, From, To, FLinearColor(1.f, 0.04f, 0.02f) * Flicker, FMath::Lerp(0.5f, 2.6f, A * A), bOn);
 	}
 }
 
@@ -265,9 +281,20 @@ bool AFallEnemy::ReceiveHit(const FVector& PushDirWorld, float Strength, float D
 		StunMeter += Damage;
 		if (StunMeter >= 40.f && State != EFallEnemyState::Stunned)
 		{
+			StunMeter = 0.f;
+			const UFallWorldSubsystem* FWs = UFallWorldSubsystem::Get(this);
+			if (StunCount < 2 && FWs && FWs->FallTime < 150.f)
+			{
+				// Breaks away: a smoke burst and a harder dive. The chase goes on.
+				++StunCount;
+				OwnFall += 2500.f;
+				VelH += FMath::VRand().GetSafeNormal2D() * 1500.f;
+				if (AFallFX* FX = AFallFX::Get(this)) for (int32 i = 0; i < 6; ++i) FX->Sprite(GetActorLocation(), FMath::VRand() * 500.f, 200.f, 1200.f, 2.f, FLinearColor(0.9f, 0.85f, 0.75f), 0.8f, true, 1.f);
+				if (UFallWorldSubsystem* FWm = UFallWorldSubsystem::Get(this)) FWm->NoteEvent("TargetBreakaway");
+				return false;
+			}
 			State = EFallEnemyState::Stunned;
 			StateTime = 0.f;
-			StunMeter = 0.f;
 			SetLaser(false, FVector::ZeroVector, FVector::ZeroVector);
 			if (UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this)) FW->NoteEvent("TargetStunned");
 		}
@@ -294,6 +321,12 @@ void AFallEnemy::Knockout(const FVector& PushDir)
 	if (AFallDebris* P = Platform.Get()) P->Holder = nullptr;
 	Platform = nullptr;
 	if (Membrane) Membrane->SetVisibility(false);
+	if (AFallFX* FX = AFallFX::Get(this))
+	{
+		FX->Sparks(GetActorLocation(), PushDir, 24, FLinearColor(1.f, 0.6f, 0.3f), 3500.f);
+		for (int32 i = 0; i < 4; ++i) FX->Sprite(GetActorLocation() + FMath::VRand() * 60.f, FMath::VRand() * 400.f, 150.f, 700.f, 1.2f, FLinearColor(0.12f, 0.1f, 0.1f), 0.8f, true, 1.f);
+	}
+	FallSynth::Play(this, FallSynth::EKind::HitMetal, GetActorLocation(), 0.8f, 0.6f);
 	if (UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this)) FW->NoteEvent("EnemyDown");
 }
 
@@ -367,7 +400,9 @@ void AFallEnemy::Tick(float Dt)
 	StateTime += Dt;
 
 	// Once the player has the parachute the fight is over: the escort breaks off and leaves.
-	if (P && P->bHasParachute && GetType() != EFallEnemyType::Target && State != EFallEnemyState::Dead)
+	// Near the ground the sky clears too: the ending must read.
+	const bool bClearSky = FW && (FW->FallTime > 165.f || FW->HeightAboveGround() < 400.f);
+	if (P && (P->bHasParachute || bClearSky) && GetType() != EFallEnemyType::Target && State != EFallEnemyState::Dead)
 	{
 		NextAction = 1000.f;
 		Passes = 3;
@@ -433,10 +468,11 @@ void AFallEnemy::TickShooter(float Dt, AFallPlayer* P)
 	case EFallEnemyState::Hold:
 	case EFallEnemyState::Cooldown:
 		Control.bAim = false;
-		if (NextAction <= 0.f && ToP.Size() < 4500.f)
+		if (NextAction <= 0.f && ToP.Size() < 4500.f && ActiveTelegraphs < 2)
 		{
 			State = EFallEnemyState::Telegraph;
 			StateTime = 0.f;
+			++ActiveTelegraphs;
 			FallSynth::Play(this, FallSynth::EKind::Charge, GetActorLocation(), 0.9f);
 		}
 		break;
@@ -444,9 +480,10 @@ void AFallEnemy::TickShooter(float Dt, AFallPlayer* P)
 		// 0.6 s: gun up, red laser locked on the player. The aim during the burst lags behind this.
 		Control.bAim = true;
 		Control.AimAt = LaggedAim;
-		SetLaser(StateTime > 0.12f, Muzzle(), Muzzle() + (LaggedAim - Muzzle()).GetSafeNormal() * FMath::Min((LaggedAim - Muzzle()).Size() + 400.f, 6000.f));
+		SetLaser(StateTime > 0.05f, Muzzle(), Muzzle() + (LaggedAim - Muzzle()).GetSafeNormal() * FMath::Min((LaggedAim - Muzzle()).Size() + 400.f, 6000.f));
 		if (StateTime >= Data->TelegraphTime)
 		{
+			ActiveTelegraphs = FMath::Max(0, ActiveTelegraphs - 1);
 			State = EFallEnemyState::Burst;
 			StateTime = 0.f;
 			ShotsLeft = Data->BurstCount;
@@ -477,6 +514,13 @@ void AFallEnemy::TickShooter(float Dt, AFallPlayer* P)
 
 void AFallEnemy::TickTarget(float Dt, AFallPlayer* P)
 {
+	// A yellow flare trail from the container: the parachute is always findable, without any HUD marker.
+	FlareTimer -= Dt;
+	if (Pack && Pack->IsVisible() && FlareTimer <= 0.f && (State == EFallEnemyState::Flee || State == EFallEnemyState::Stunned))
+	{
+		FlareTimer = 0.05f;
+		if (AFallFX* FX = AFallFX::Get(this)) FX->Sprite(Pack->GetComponentLocation(), FVector(0, 0, -OwnFall * 0.7f), 60.f, 420.f, 1.6f, FLinearColor(1.f, 0.75f, 0.1f), 0.85f, true, 6.f);
+	}
 	const FVector PP = P->GetActorLocation();
 	const FVector ToP = PP - GetActorLocation();
 	Control.LookAt = PP;
@@ -518,9 +562,9 @@ void AFallEnemy::TickTarget(float Dt, AFallPlayer* P)
 		Control.OverrideTarget = 1.f;
 		Control.bAim = false;
 		Control.Dive = -0.5f;
-		OwnFall = FMath::FInterpTo(OwnFall, P->FallSpeed * 100.f - 300.f, Dt, 1.5f); // drifts up towards the chaser
+		OwnFall = FMath::FInterpTo(OwnFall, P->FallSpeed * 100.f - 1200.f, Dt, 2.f); // limp, it rises towards the chaser
 		VelH = FMath::VInterpTo(VelH, FVector::ZeroVector, Dt, 1.f);
-		if (StateTime > 3.5f)
+		if (StateTime > 4.5f)
 		{
 			State = EFallEnemyState::Flee;
 			StateTime = 0.f;

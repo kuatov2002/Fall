@@ -485,6 +485,7 @@ bool FFallAnimProxy::Evaluate(FPoseContext& Output)
 			const FVector Dr = RotateToward(RotateToward(Dc, Chest[kUp], Arm.RootRaise), Chest[kFront], Arm.RootForward);
 			const FQuat T = FQuat::FindBetweenNormals(Dc, Dr) * ChestDelta * RefCS[i].GetRotation();
 			const FFallBoneGroupTuning& G = D->Group(EFallBoneGroup::Clavicle);
+			if (SpringValid[i] && Limbs[RI].bRight && In.Recoil > 0.f) SpringW[i] += (Dc ^ Chest[kUp]).GetSafeNormal() * In.Recoil * 8.f;
 			Rot = Spring(i, T, G, StiffMul, Dt);
 			break;
 		}

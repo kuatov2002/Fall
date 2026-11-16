@@ -7,6 +7,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Components/PointLightComponent.h"
 
 AFallAirship::AFallAirship()
 {
@@ -58,6 +59,16 @@ void AFallAirship::BeginPlay()
 	}
 	Part(TEXT("Cube"), FVector(-33.f, 0, 7.f), FRotator::ZeroRotator, FVector(8.f, 0.5f, 7.f), Envelope * 0.8f);
 	FallSynth::Play(this, FallSynth::EKind::Explosion, GetActorLocation(), 0.6f, 0.7f);
+	// Fire inside the envelope lights the hull from within.
+	Glow = NewObject<UPointLightComponent>(this);
+	Glow->SetupAttachment(RootComponent);
+	Glow->SetRelativeLocation(FVector(0, 0, -600.f));
+	Glow->SetIntensityUnits(ELightUnits::Candelas);
+	Glow->SetIntensity(400000.f);
+	Glow->SetAttenuationRadius(12000.f);
+	Glow->SetLightColor(FLinearColor(1.f, 0.45f, 0.12f));
+	Glow->SetCastShadows(false);
+	Glow->RegisterComponent();
 }
 
 void AFallAirship::Breakup()
@@ -69,10 +80,17 @@ void AFallAirship::Breakup()
 	const FVector PlayerPos = FW && FW->Player.IsValid() ? FW->Player->GetActorLocation() : FVector::ZeroVector;
 	const FTransform T = GetActorTransform();
 	FallSynth::Play(this, FallSynth::EKind::Explosion, FVector::ZeroVector, 1.f, 0.8f);
-	if (AFallPlayer* P = FW ? FW->Player.Get() : nullptr) { P->AddShake(1.2f); P->HitStop(0.05f); }
-	for (int32 i = 0; i < 4; ++i)
+	if (AFallPlayer* P = FW ? FW->Player.Get() : nullptr)
 	{
-		if (FX) FX->Explosion(T.TransformPosition(FVector(FMath::FRandRange(-3000.f, 3000.f), FMath::FRandRange(-600.f, 600.f), FMath::FRandRange(-800.f, 400.f))), FMath::FRandRange(1.2f, 2.f));
+		// The shockwave throws the player.
+		P->AddShake(1.5f);
+		P->HitStop(0.06f);
+		P->AddImpulse((P->GetActorLocation() - GetActorLocation()).GetSafeNormal(), 2.5f);
+		P->AddHorizontalImpulse((P->GetActorLocation() - GetActorLocation()).GetSafeNormal2D() * 600.f);
+	}
+	for (int32 i = 0; i < 7; ++i)
+	{
+		if (FX) FX->Explosion(T.TransformPosition(FVector(FMath::FRandRange(-3200.f, 3200.f), FMath::FRandRange(-700.f, 700.f), FMath::FRandRange(-900.f, 500.f))), FMath::FRandRange(2.5f, 4.f));
 	}
 	if (!Sp) { Destroy(); return; }
 
@@ -112,13 +130,13 @@ void AFallAirship::Tick(float Dt)
 	FireTimer -= Dt;
 	if (FireTimer <= 0.f)
 	{
-		FireTimer = 0.05f;
+		FireTimer = 0.025f;
 		if (AFallFX* FX = AFallFX::Get(this))
 		{
 			const FVector P = GetActorTransform().TransformPosition(FVector(FMath::FRandRange(-2500.f, 1500.f), FMath::FRandRange(-600.f, 600.f), FMath::FRandRange(-700.f, 700.f)));
 			const UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this);
 			const float Pl = FW ? FW->PlayerFallSpeed : 0.f;
-			FX->Sprite(P, FVector(0, 0, -Pl), 500.f, 250.f, 0.35f, FLinearColor(1.f, 0.4f, 0.08f), 0.95f, true, 10.f);
+			FX->Sprite(P, FVector(0, 0, -Pl), 1100.f, 500.f, 0.4f, FLinearColor(1.f, 0.4f, 0.08f), 0.95f, true, 14.f);
 			FX->Sprite(P, FVector(0, 0, 400.f - Pl), 600.f, 2600.f, 3.f, FLinearColor(0.05f, 0.045f, 0.04f), 0.8f, true, 1.f);
 		}
 	}

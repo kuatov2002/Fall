@@ -16,6 +16,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "Misc/App.h"
 #include "UObject/ConstructorHelpers.h"
 
 AFallDirector::AFallDirector()
@@ -90,7 +91,11 @@ void AFallDirector::JumpTo(float T)
 	if (AFallDebrisSpawner* Sp = AFallDebrisSpawner::Get(this)) Sp->DestroyAll();
 
 	Time = T;
-	Checkpoint = S->RestartPointBefore(T);
+	Checkpoint = FMath::Max(S->RestartPointBefore(T), (bCheckpointParachute && T >= Checkpoint) ? Checkpoint : 0.f);
+	if (T <= 0.01f) bCheckpointParachute = false;
+	DeathTime = -1.f;
+	bLanded = false;
+	UGameplayStatics::SetGlobalTimeDilation(this, 1.f);
 	bCanopy = false;
 	bEnded = false;
 	CrashTime = -1.f;
@@ -127,12 +132,12 @@ void AFallDirector::JumpTo(float T)
 		P->ResetBody();
 		P->bHasParachute = false;
 		P->SetActorLocation(FVector::ZeroVector);
-		if (FParse::Param(FCommandLine::Get(), TEXT("FallGiveParachute"))) P->GiveParachute();
+		if (FParse::Param(FCommandLine::Get(), TEXT("FallGiveParachute")) || (bCheckpointParachute && T >= Checkpoint)) P->GiveParachute();
 		if (T <= 0.01f && bEventsEnabled)
 		{
 			// Falling out of the airship: starts almost at rest and accelerates.
 			P->FallSpeed = 3.f;
-			if (APlayerController* PC = Cast<APlayerController>(P->GetController())) PC->SetControlRotation(FRotator(14.f, 0.f, 0.f));
+			if (APlayerController* PC = Cast<APlayerController>(P->GetController())) PC->SetControlRotation(FRotator(22.f, 0.f, 0.f));
 		}
 	}
 	FW->FallTime = T;
@@ -236,10 +241,12 @@ void AFallDirector::Crash()
 {
 	CrashTime = 0.f;
 	if (AFallPlayer* P = UFallWorldSubsystem::Get(this)->Player.Get()) P->AddShake(1.5f);
-	FallSynth::Play(this, FallSynth::EKind::Explosion, FVector::ZeroVector, 1.f, 1.6f);
+	FallSynth::Play(this, FallSynth::EKind::Explosion, FVector::ZeroVector, 1.f, 0.7f);
+	FallSynth::Play(this, FallSynth::EKind::HitBody, FVector::ZeroVector, 1.f, 0.5f);
 	if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
 	{
-		if (AFallHUD* HUD = Cast<AFallHUD>(PC->GetHUD())) { HUD->FadeAlpha = 1.f; HUD->FadeColor = FLinearColor::White; HUD->FadeSpeed = 0.f; }
+		// Impact: hard cut to black (the canopy ending fades to white instead).
+		if (AFallHUD* HUD = Cast<AFallHUD>(PC->GetHUD())) { HUD->FadeAlpha = 1.f; HUD->FadeColor = FLinearColor::Black; HUD->FadeSpeed = 0.f; }
 	}
 	UFallWorldSubsystem::Get(this)->NoteEvent("Crash");
 }
@@ -274,7 +281,13 @@ void AFallDirector::Tick(float Dt)
 	}
 	if (P->bDied)
 	{
-		JumpTo(Checkpoint);
+		if (DeathTime < 0.f)
+		{
+			DeathTime = 0.f;
+			UGameplayStatics::SetGlobalTimeDilation(this, 0.25f);
+		}
+		DeathTime += FApp::GetDeltaTime();
+		if (DeathTime > 0.45f) JumpTo(Checkpoint);
 		return;
 	}
 	if (bEnded)
@@ -291,10 +304,15 @@ void AFallDirector::Tick(float Dt)
 		Fire(S->Events[NextEvent++]);
 	}
 
-	if (FW->bAltitudeLive) FW->Altitude -= P->FallSpeed * Dt;
+	if (FW->bAltitudeLive) FW->Altitude -= P->FallSpeed * Dt * (bCanopy ? FMath::Clamp(CanopyTime - 2.5f, 1.f, 9.f) : 1.f);
 	else FW->Altitude = S->AltitudeAt(Time);
 
 	const float AGL = FW->HeightAboveGround();
+	if (!bCanopy && AGL < 30.f && AFallFX::Get(this))
+	{
+		const FVector G = P->GetActorLocation() - FVector(0.f, 0.f, AGL * 100.f);
+		AFallFX::Get(this)->Sprite(G + FMath::VRand() * 400.f, FMath::VRand() * 600.f, 600.f, 1800.f, 1.f, FLinearColor(0.25f, 0.2f, 0.14f), 0.8f, false, 1.f);
+	}
 	if (!bCanopy && P->bHasParachute && AGL < S->DeployHeight) Deploy();
 	if (!bCanopy && AGL <= 3.f) { Crash(); return; }
 
@@ -318,14 +336,31 @@ void AFallDirector::Tick(float Dt)
 				Lines[i] = FX->Beam(Lines[i], Sh, Edge, FLinearColor(0.15f, 0.15f, 0.15f), 0.8f, true);
 			}
 		}
-		if (CanopyTime > 7.f && !bEnded)
+		if (!bLanded && AGL < 2.f)
 		{
-			bEnded = true;
-			EndTime = 0.f;
+			// Touchdown: the feet hit the meadow, the canopy sags and drops forward, a slow fade to white.
+			bLanded = true;
+			LandTime = 0.f;
+			P->AddShake(0.6f);
+			P->AddImpulse(FVector::UpVector, 1.5f);
+			P->FallSpeed = 0.f;
+			FallSynth::Play(this, FallSynth::EKind::HitBody, FVector::ZeroVector, 0.8f, 0.6f);
 			FW->NoteEvent("Landed");
-			if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
+		}
+		if (bLanded)
+		{
+			LandTime += Dt;
+			FW->Altitude = FW->GroundHeightAt(P->GetActorLocation()) + 1.f;
+			Canopy->SetWorldLocation(Top + P->GetActorForwardVector() * 300.f * FMath::Min(LandTime, 2.f) - FVector(0, 0, 350.f * FMath::Min(LandTime, 2.f)));
+			Canopy->SetWorldRotation(FRotator(-35.f * FMath::Min(LandTime, 2.f), P->GetActorRotation().Yaw, 0.f));
+			if (LandTime > 1.5f && !bEnded)
 			{
-				if (AFallHUD* HUD = Cast<AFallHUD>(PC->GetHUD())) { HUD->FadeColor = FLinearColor::White; HUD->FadeSpeed = -0.5f; HUD->FadeAlpha = 0.01f; }
+				bEnded = true;
+				EndTime = 0.f;
+				if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
+				{
+					if (AFallHUD* HUD = Cast<AFallHUD>(PC->GetHUD())) { HUD->FadeColor = FLinearColor::White; HUD->FadeSpeed = -0.5f; HUD->FadeAlpha = 0.01f; }
+				}
 			}
 		}
 	}
