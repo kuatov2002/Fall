@@ -98,6 +98,12 @@ public:
 	/** The grab button was pressed recently (generous window). */
 	bool WantsGrab() const { return GetWorld() && GetWorld()->GetTimeSeconds() - GrabIntentTime < 0.8f; }
 
+	/** Opening cutscene: the body stands and runs on clips, no input, no fall. */
+	void BeginIntro();
+	/** Thrown over the rail: procedural animation, control and the fall start here. */
+	void EndIntro(const FVector& ThrowDir);
+	bool bInIntro = false;
+
 	/** Best grabbable piece in reach, or null. */
 	AFallDebris* FindGrabbable() const;
 
@@ -139,6 +145,12 @@ protected:
 	bool bKickApplied = false;
 
 	UPROPERTY() TObjectPtr<UFallWindWave> WindWave;
+	/** Recorded wind: low rumble, mid flow, high whistle, fabric flutter. */
+	UPROPERTY() TArray<TObjectPtr<UAudioComponent>> WindLayers;
+	UPROPERTY() TObjectPtr<class UMaterialInstanceDynamic> ScreenWind;
+	float CloudVeil = 0.f;
+	float LayerVol[4] = {0.f, 0.f, 0.f, 0.f};
+	float Frost = 0.f;
 
 	float ShakeImpulse = 0.f;
 	float ShakeClock = 0.f;

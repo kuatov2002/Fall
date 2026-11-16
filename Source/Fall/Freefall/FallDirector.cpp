@@ -1,5 +1,8 @@
 #include "FallDirector.h"
 #include "FallArt.h"
+#include "FallIntro.h"
+#include "Sound/SoundBase.h"
+#include "Kismet/GameplayStatics.h"
 #include "FallPlayer.h"
 #include "FallWorld.h"
 #include "FallEnemy.h"
@@ -72,7 +75,7 @@ FVector AFallDirector::RelToWorld(const FVector& RelMetres) const
 	return Yaw.RotateVector(RelMetres * 100.f);
 }
 
-void AFallDirector::JumpTo(float T)
+void AFallDirector::JumpTo(float T, bool bFromIntro)
 {
 	UWorld* W = GetWorld();
 	UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this);
@@ -81,7 +84,7 @@ void AFallDirector::JumpTo(float T)
 
 	// Clear the stage.
 	for (TActorIterator<AFallEnemy> It(W); It; ++It) It->Destroy();
-	for (TActorIterator<AFallAirship> It(W); It; ++It) It->Destroy();
+	for (TActorIterator<AFallAirship> It(W); It; ++It) if (!(bFromIntro && It->bIntroShip)) It->Destroy();
 	if (AFallDebrisSpawner* Sp = AFallDebrisSpawner::Get(this)) Sp->DestroyAll();
 
 	Time = T;
@@ -121,7 +124,7 @@ void AFallDirector::JumpTo(float T)
 		}
 	}
 
-	if (AFallPlayer* P = FW->Player.Get())
+	if (AFallPlayer* P = bFromIntro ? nullptr : FW->Player.Get())
 	{
 		P->ResetBody();
 		P->bHasParachute = false;
@@ -138,7 +141,7 @@ void AFallDirector::JumpTo(float T)
 	FW->NoteEvent("Restart");
 	if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
 	{
-		if (AFallHUD* HUD = Cast<AFallHUD>(PC->GetHUD())) { HUD->FadeAlpha = 1.f; HUD->FadeColor = FLinearColor::Black; HUD->FadeSpeed = 3.f; }
+		if (AFallHUD* HUD = Cast<AFallHUD>(PC->GetHUD())) { if (!bFromIntro) { HUD->FadeAlpha = 1.f; HUD->FadeColor = FLinearColor::Black; HUD->FadeSpeed = 3.f; } }
 	}
 }
 
@@ -169,7 +172,13 @@ void AFallDirector::Fire(const FFallSequenceEvent& E)
 	case EFallEventType::OneShot:
 	{
 		const FVector P = (FW->Player.IsValid() ? FW->Player->GetActorLocation() : FVector::ZeroVector) + RelToWorld(E.Position);
-		if (E.OneShot == EFallOneShot::AirshipBreakup)
+		AFallAirship* IntroShip = nullptr;
+		for (TActorIterator<AFallAirship> It(W); It; ++It) if (It->bIntroShip) IntroShip = *It;
+		if (E.OneShot == EFallOneShot::AirshipBreakup && IntroShip)
+		{
+			IntroShip->BreakupDelay = IntroShip->GetAge() + 2.2f; // breaks up above the falling player
+		}
+		else if (E.OneShot == EFallOneShot::AirshipBreakup)
 		{
 			FActorSpawnParameters SP;
 			SP.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
@@ -228,6 +237,8 @@ void AFallDirector::Deploy()
 		P->AddImpulse(P->GetActorForwardVector() + FVector(0, 0, 0.4f), 2.5f); // the opening shock swings the body under the canopy
 	}
 	FallSynth::Play(this, FallSynth::EKind::Canopy, FVector::ZeroVector, 1.f);
+	if (const TSoftObjectPtr<USoundBase>* Pop = UFallArtData::Get()->Sounds.Find("CanopyPop"))
+		if (USoundBase* S = Pop->LoadSynchronous()) UGameplayStatics::PlaySound2D(this, S, 1.2f, 0.8f);
 	UFallWorldSubsystem::Get(this)->NoteEvent("CanopyOpen");
 }
 
@@ -266,8 +277,9 @@ void AFallDirector::Tick(float Dt)
 	if (!P || !S) return;
 	if (!bStarted)
 	{
+		if (AFallIntro::IsBlocking(this)) return; // the cutscene holds the fall until the throw
 		bStarted = true;
-		JumpTo(StartTime);
+		JumpTo(StartTime, AFallIntro::HandedOver(this));
 		return;
 	}
 

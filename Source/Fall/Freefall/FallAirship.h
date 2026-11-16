@@ -20,6 +20,10 @@ public:
 
 	/** Seconds before it breaks apart. */
 	UPROPERTY(EditAnywhere, Category = "Airship") float BreakupDelay = 1.6f;
+	/** The ship of the opening cutscene: the fall reuses it instead of spawning another. */
+	bool bIntroShip = false;
+	float GetAge() const { return Age; }
+	UStaticMeshComponent* AnyPart() const { return Parts.Num() ? Parts[0].Get() : nullptr; }
 
 protected:
 	virtual void BeginPlay() override;

@@ -133,6 +133,8 @@ public:
 
 	/** Cloud deck bottom and thickness, km. */
 	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D CloudDeck = FVector2D(1.9f, 0.7f);
+	/** Ground haze: dense in the valleys, warm towards the sun. */
+	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<class UExponentialHeightFogComponent> Haze;
 
 	/** Ground height function, metres. Valley floor around the landing zone at the origin. */
 	static float HeightAt(float Xm, float Ym);
@@ -154,8 +156,13 @@ public:
 	AFallSpeedField();
 
 	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<UInstancedStaticMeshComponent> Streaks;
+	/** Moisture and dust right by the camera: more and longer with speed. */
+	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<UInstancedStaticMeshComponent> Specks;
+	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumSpecks = 180;
+	/** Bits of envelope fabric tumbling past, mostly near the airship. */
+	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumScraps = 14;
 
-	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumStreaks = 110;
+	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumStreaks = 70;
 	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D StreakRadius = FVector2D(280.f, 1300.f);
 	UPROPERTY(EditAnywhere, Category = "Fall") float StreakHalfHeight = 2600.f;
 	/** Streak length = fall speed * this, seconds of motion blur. */
@@ -177,6 +184,10 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+
+	TArray<FVector> SpeckPos;
+	struct FScrap { TObjectPtr<UStaticMeshComponent> Comp; FVector Pos; FRotator Spin; FRotator Rot; float Drag = 1.f; };
+	TArray<FScrap> Scraps;
 
 	struct FPuff
 	{

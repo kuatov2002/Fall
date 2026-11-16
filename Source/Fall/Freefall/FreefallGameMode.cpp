@@ -2,6 +2,7 @@
 #include "FallPlayer.h"
 #include "FallWorld.h"
 #include "FallReview.h"
+#include "FallIntro.h"
 #include "FallAnimGallery.h"
 #include "FallDebris.h"
 #include "FallFX.h"
@@ -58,6 +59,10 @@ void AFreefallGameMode::StartPlay()
 	}
 
 	FString Dummy;
+	if (!IsGallery() && AFallIntro::ShouldPlay())
+	{
+		W->SpawnActor<AFallIntro>(AFallIntro::StaticClass(), FTransform::Identity, P);
+	}
 	if (!IsGallery() && FParse::Value(FCommandLine::Get(), TEXT("FallReview="), Dummy))
 	{
 		W->SpawnActor<AFallReview>(AFallReview::StaticClass(), FTransform::Identity, P);

@@ -29,6 +29,8 @@ public:
 	void Sparks(const FVector& Pos, const FVector& Dir, int32 Count, const FLinearColor& Color, float Speed = 2500.f);
 	/** Bullet tracer from A to B. */
 	void Tracer(const FVector& A, const FVector& B, const FLinearColor& Color, float Width = 3.f);
+	/** Spent casing thrown from the ejection port; the air takes it up past the shooter. */
+	void Casing(const FVector& Pos, const FVector& Vel);
 	/** Explosion: flash, fire and smoke, sparks. */
 	void Explosion(const FVector& Pos, float Scale);
 
@@ -71,5 +73,7 @@ protected:
 	UPROPERTY() TObjectPtr<USceneComponent> AirAnchor;
 	TArray<FPart> Sprites, Flashes, SparkPool;
 	TArray<FLine> Lines;
+	TArray<FPart> Casings;
+	int32 CasingCursor = 0;
 	int32 SpriteCursor = 0, FlashCursor = 0, SparkCursor = 0, LineCursor = 0;
 };

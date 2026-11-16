@@ -49,7 +49,9 @@ void AFallAirship::BeginPlay()
 			const FBox B = M->GetBoundingBox();
 			for (int32 k = 0; k < (N.Contains(TEXT("Envelope")) ? 3 : 1); ++k)
 			{
-				const FVector Local = B.GetCenter() + FVector(0.f, B.GetExtent().Y * (k - 1) * 0.55f, B.GetExtent().Z * 0.6f);
+				// Envelopes burn along their top; the hull burns at its port side, away from the deck walkway.
+				const FVector Local = N.Contains(TEXT("Envelope")) ? B.GetCenter() + FVector(0.f, B.GetExtent().Y * (k - 1) * 0.55f, B.GetExtent().Z * 0.6f)
+					: B.GetCenter() + FVector(-B.GetExtent().X * 0.8f, 0.f, B.GetExtent().Z * 0.2f);
 				UNiagaraComponent* F = UNiagaraFunctionLibrary::SpawnSystemAttached(Sys, C, NAME_None, Local, FRotator::ZeroRotator, FVector(N.Contains(TEXT("Envelope")) ? 9.f : 4.f), EAttachLocation::KeepRelativeOffset, false, ENCPoolMethod::None);
 				if (F) Fires.Add(F);
 			}
@@ -59,10 +61,10 @@ void AFallAirship::BeginPlay()
 	// Fire inside the envelope lights the hull from within.
 	Glow = NewObject<UPointLightComponent>(this);
 	Glow->SetupAttachment(RootComponent);
-	Glow->SetRelativeLocation(FVector(0, 0, 800.f));
+	Glow->SetRelativeLocation(FVector(0, 0, 2400.f)); // inside the envelopes, well above the deck
 	Glow->SetIntensityUnits(ELightUnits::Candelas);
-	Glow->SetIntensity(600000.f);
-	Glow->SetAttenuationRadius(15000.f);
+	Glow->SetIntensity(250000.f);
+	Glow->SetAttenuationRadius(9000.f);
 	Glow->SetLightColor(FLinearColor(1.f, 0.45f, 0.12f));
 	Glow->SetCastShadows(false);
 	Glow->RegisterComponent();

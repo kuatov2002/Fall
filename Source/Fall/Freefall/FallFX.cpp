@@ -66,6 +66,16 @@ void AFallFX::BeginPlay()
 	for (FPart& P : Flashes) P.Comp = Make(Sphere, AddMat, P.MID);
 	SparkPool.SetNum(120);
 	for (FPart& P : SparkPool) P.Comp = Make(Cube, AddMat, P.MID);
+	if (UStaticMesh* Shell = Art->Casing.LoadSynchronous())
+	{
+		Casings.SetNum(24);
+		for (FPart& P : Casings)
+		{
+			UMaterialInstanceDynamic* Unused = nullptr;
+			P.Comp = Make(Shell, nullptr, Unused);
+			P.Comp->SetMaterial(0, Shell->GetMaterial(0));
+		}
+	}
 	Lines.SetNum(48);
 	for (FLine& L : Lines) L.Comp = Make(Cube, AddMat, L.MID);
 }
@@ -193,6 +203,16 @@ void AFallFX::Explosion(const FVector& Pos, float Scale)
 	Sparks(Pos, FVector::UpVector, 30, FLinearColor(1.f, 0.7f, 0.3f), 5000.f * Scale);
 }
 
+void AFallFX::Casing(const FVector& Pos, const FVector& Vel)
+{
+	if (!Casings.Num()) return;
+	FPart* P = Take(Casings, CasingCursor);
+	P->Pos = Pos; P->Vel = Vel; P->Age = 0.f; P->Life = 2.5f; P->bActive = true;
+	P->Size0 = FMath::FRandRange(-1.f, 1.f); // tumble direction
+	P->Comp->SetWorldScale3D(FVector(1.6f)); // readable at gameplay distance
+	P->Comp->SetVisibility(true);
+}
+
 void AFallFX::Tick(float Dt)
 {
 	Super::Tick(Dt);
@@ -221,6 +241,17 @@ void AFallFX::Tick(float Dt)
 			P.MID->SetScalarParameterValue("Opacity", P.Opacity * Fade);
 			P.MID->SetScalarParameterValue("Emissive", P.Emissive * FMath::Lerp(1.f, 0.4f, X));
 		}
+	}
+	for (FPart& P : Casings)
+	{
+		if (!P.bActive) continue;
+		P.Age += Dt;
+		if (P.Age >= P.Life) { P.bActive = false; P.Comp->SetVisibility(false); continue; }
+		// The casing leaves at the ejection speed, then the airstream takes it: it rises past the shooter.
+		P.Vel *= FMath::Exp(-2.5f * Dt);
+		P.Pos += (P.Vel + Air * FMath::Min(P.Age * 1.5f, 1.f)) * Dt;
+		P.Comp->SetWorldLocation(P.Pos);
+		P.Comp->SetWorldRotation(FRotator(P.Age * 1400.f * P.Size0, P.Age * 900.f, P.Age * 600.f));
 	}
 	for (FPart& P : Flashes)
 	{

@@ -1,5 +1,8 @@
 #include "FallEnemy.h"
 #include "FallArt.h"
+#include "NiagaraComponent.h"
+#include "NiagaraFunctionLibrary.h"
+#include "NiagaraSystem.h"
 #include "FallPlayer.h"
 #include "FallWorld.h"
 #include "FallFX.h"
@@ -178,6 +181,18 @@ void AFallEnemy::BuildOutfit()
 		if (UStaticMesh* Bottle = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/Freefall/Assets/Models/small_lpg_tank/small_lpg_tank_2k/StaticMeshes/small_lpg_tank_2k.small_lpg_tank_2k")))
 		{
 			AttachMesh("spine_03", Bottle, FVector(0, -24.f, 2.f), FRotator::ZeroRotator, 0.75f);
+		}
+	}
+	if (T == EFallEnemyType::Wingsuiter)
+	{
+		// Twin bottles on the back with a burning exhaust: the run is announced by the flame and its smoke trail.
+		if (UStaticMesh* Bottle = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/Freefall/Assets/Models/propane_tank/propane_tank_2k/StaticMeshes/propane_tank_2k.propane_tank_2k")))
+		{
+			for (int32 s = -1; s <= 1; s += 2) AttachMesh("spine_03", Bottle, FVector(s * 9.f, -20.f, -4.f), FRotator(0.f, 0.f, 0.f), 0.55f);
+		}
+		if (UNiagaraSystem* Fl = Art->Fire.LoadSynchronous())
+		{
+			Exhaust = UNiagaraFunctionLibrary::SpawnSystemAttached(Fl, Mesh, "spine_02", FVector::ZeroVector, FRotator::ZeroRotator, FVector(0.45f), EAttachLocation::SnapToTarget, false, ENCPoolMethod::None);
 		}
 	}
 	if (T == EFallEnemyType::Target)

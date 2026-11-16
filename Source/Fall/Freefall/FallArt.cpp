@@ -96,6 +96,11 @@ UFallArtData::UFallArtData()
 	Snd(TEXT("Explosion"), TEXT("/Game/FreeWeaponSFX/Cue/GrenadeLauncher/sfx_wpn_gl_explosion_Cue"));
 	Snd(TEXT("MagOut"), TEXT("/Game/FreeWeaponSFX/Cue/Handgun/Reload/sfx_wpn_hgn_reload_02_magOut_Cue"));
 	Snd(TEXT("MagIn"), TEXT("/Game/FreeWeaponSFX/Cue/Handgun/Reload/sfx_wpn_hgn_reload_04_magIn_Cue"));
+	Snd(TEXT("WindLow"), TEXT("/Game/Freefall/Audio/SW_wind_base"));
+	Snd(TEXT("WindMid"), TEXT("/Game/Freefall/Audio/SW_wind_strong_1"));
+	Snd(TEXT("WindHigh"), TEXT("/Game/Freefall/Audio/SW_wind_whistle_1"));
+	Snd(TEXT("WindFlutter"), TEXT("/Game/Freefall/Audio/SW_flag_wind_1"));
+	Snd(TEXT("CanopyPop"), TEXT("/Game/Freefall/Audio/SW_flag_1"));
 	Snd(TEXT("Charge"), TEXT("/Game/FreeWeaponSFX/Cue/Handgun/Reload/sfx_wpn_hgn_reload_05_charge_Cue"));
 
 	FxQuad = TSoftObjectPtr<UStaticMesh>(P(TEXT("/Game/Freefall/Assets/Meshes/SM_FF_Quad")));

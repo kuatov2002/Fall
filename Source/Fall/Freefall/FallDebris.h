@@ -107,6 +107,8 @@ public:
 	float LastHit = -10.f;
 	/** A fast hit by a grabbable piece waits a moment: a grab press right now still saves the player. */
 	float PendingHit = -10.f;
+	/** Burning heavy wrecks cook off once (seconds left, negative = never). */
+	float CookOff = -1.f;
 
 	virtual void Tick(float DeltaSeconds) override;
 

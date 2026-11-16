@@ -6,6 +6,7 @@
 #include "Components/VolumetricCloudComponent.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Components/SkyLightComponent.h"
+#include "Components/ExponentialHeightFogComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -92,7 +93,7 @@ namespace
 		FLinearColor C = FMath::Lerp(Meadow, Forest, FMath::SmoothStep(380.f, 650.f, H + Noise * 120.f));
 		C = FMath::Lerp(C, Scree, FMath::SmoothStep(1500.f, 1900.f, H + Noise * 200.f));
 		C = FMath::Lerp(C, Rock * (0.75f + 0.5f * FMath::Abs(Noise)), FMath::SmoothStep(0.3f, 0.6f, Slope));
-		C = FMath::Lerp(C, Snow, FMath::SmoothStep(2050.f, 2350.f, H + Noise * 300.f) * (1.f - FMath::SmoothStep(0.55f, 0.85f, Slope)));
+		C = FMath::Lerp(C, Snow, FMath::SmoothStep(2550.f, 2850.f, H + Noise * 300.f) * (1.f - FMath::SmoothStep(0.45f, 0.75f, Slope)));
 		return C;
 	}
 }
@@ -129,9 +130,10 @@ AFallPlanet::AFallPlanet()
 	Sun = CreateDefaultSubobject<UDirectionalLightComponent>(TEXT("Sun"));
 	Sun->SetupAttachment(RootComponent);
 	Sun->SetUsingAbsoluteRotation(true);
-	Sun->SetWorldRotation(FRotator(-24.f, 35.f, 0.f));
+	// Golden hour: the sun 7 degrees above the horizon, off to the side of the usual view.
+	Sun->SetWorldRotation(FRotator(-7.f, 35.f, 0.f));
 	Sun->SetIntensity(9.f);
-	Sun->SetLightColor(FLinearColor(1.f, 0.92f, 0.8f));
+	Sun->SetLightColor(FLinearColor(1.f, 0.74f, 0.5f));
 	Sun->SetAtmosphereSunLight(true);
 	Sun->SetMobility(EComponentMobility::Movable);
 	Sun->bCastCloudShadows = true;
@@ -140,6 +142,16 @@ AFallPlanet::AFallPlanet()
 	SkyLight->SetupAttachment(RootComponent);
 	SkyLight->SetMobility(EComponentMobility::Movable);
 	SkyLight->bRealTimeCapture = true;
+
+	Haze = CreateDefaultSubobject<UExponentialHeightFogComponent>(TEXT("Haze"));
+	Haze->SetupAttachment(Anchor);
+	Haze->SetFogDensity(0.06f);
+	Haze->SetFogHeightFalloff(0.35f);
+	Haze->SetFogMaxOpacity(0.92f);
+	Haze->SetFogInscatteringColor(FLinearColor(0.32f, 0.42f, 0.62f));
+	Haze->SetDirectionalInscatteringExponent(6.f);
+	Haze->SetDirectionalInscatteringColor(FLinearColor(1.f, 0.55f, 0.28f));
+	Haze->SetVolumetricFog(false);
 
 	Terrain = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("Terrain"));
 	Terrain->SetupAttachment(Anchor);
@@ -259,6 +271,11 @@ AFallSpeedField::AFallSpeedField()
 	Streaks->SetUsingAbsoluteRotation(true);
 	Streaks->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Streaks->SetCastShadow(false);
+	Specks = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("Specks"));
+	Specks->SetupAttachment(RootComponent);
+	Specks->SetUsingAbsoluteLocation(true);
+	Specks->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Specks->SetCastShadow(false);
 	Rng.Initialize(1234);
 }
 
@@ -276,8 +293,8 @@ void AFallSpeedField::BeginPlay()
 	if (Add)
 	{
 		UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(Add, this);
-		MID->SetVectorParameterValue("Color", FLinearColor(0.75f, 0.85f, 1.f));
-		MID->SetScalarParameterValue("Intensity", 1.6f);
+		MID->SetVectorParameterValue("Color", FLinearColor(0.85f, 0.9f, 1.f));
+		MID->SetScalarParameterValue("Intensity", 0.7f);
 		Streaks->SetMaterial(0, MID);
 	}
 	StreakPos.SetNum(NumStreaks);
@@ -290,6 +307,44 @@ void AFallSpeedField::BeginPlay()
 		Xf.Add(FTransform(StreakPos[i]));
 	}
 	Streaks->AddInstances(Xf, false);
+
+	Specks->SetStaticMesh(Cube);
+	if (Add)
+	{
+		UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(Add, this);
+		MID->SetVectorParameterValue("Color", FLinearColor(1.f, 0.9f, 0.78f));
+		MID->SetScalarParameterValue("Intensity", 2.2f);
+		Specks->SetMaterial(0, MID);
+	}
+	SpeckPos.SetNum(NumSpecks);
+	TArray<FTransform> Sx;
+	for (int32 i = 0; i < NumSpecks; ++i)
+	{
+		SpeckPos[i] = FVector(Rng.FRandRange(-700.f, 700.f), Rng.FRandRange(-700.f, 700.f), Rng.FRandRange(-1500.f, 1500.f));
+		Sx.Add(FTransform(SpeckPos[i]));
+	}
+	Specks->AddInstances(Sx, false);
+
+	UMaterialInterface* ScrapMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/MI_Scrap.MI_Scrap"));
+	for (int32 i = 0; i < NumScraps; ++i)
+	{
+		FScrap S;
+		S.Comp = NewObject<UStaticMeshComponent>(this);
+		S.Comp->SetStaticMesh(Plane);
+		S.Comp->SetupAttachment(RootComponent);
+		S.Comp->SetUsingAbsoluteLocation(true);
+		S.Comp->SetUsingAbsoluteRotation(true);
+		S.Comp->SetUsingAbsoluteScale(true);
+		S.Comp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		S.Comp->SetCastShadow(false);
+		if (ScrapMat) S.Comp->SetMaterial(0, ScrapMat);
+		S.Comp->RegisterComponent();
+		S.Pos = FVector(Rng.FRandRange(-2500.f, 2500.f), Rng.FRandRange(-2500.f, 2500.f), Rng.FRandRange(-6000.f, 6000.f));
+		S.Spin = FRotator(Rng.FRandRange(-400.f, 400.f), Rng.FRandRange(-400.f, 400.f), Rng.FRandRange(-400.f, 400.f));
+		S.Drag = Rng.FRandRange(0.6f, 1.f);
+		S.Comp->SetWorldScale3D(FVector(Rng.FRandRange(0.15f, 0.6f), Rng.FRandRange(0.1f, 0.4f), 1.f));
+		Scraps.Add(S);
+	}
 
 	for (int32 i = 0; i < 48; ++i)
 	{
@@ -351,10 +406,46 @@ void AFallSpeedField::Tick(float Dt)
 			if (FVector2D(ToBody.X, ToBody.Y).Size() < 260.f) P.Z = StreakHalfHeight + 1.f; // respawn next frame, away from the body
 		}
 		const float Dist = P.Size();
-		const float Thick = 0.018f + Dist * 0.00001f;
+		const float Thick = 0.008f + Dist * 0.000006f;
 		Xf[i] = FTransform(Align, C + P, FVector(Thick, Thick, Len / 100.f));
 	}
 	Streaks->BatchUpdateInstancesTransforms(0, Xf, true, true);
+
+	// Specks: tiny bright streaks 1.5-7 m from the lens. Their number and length follow the speed, so a still frame
+	// at the top of a dive reads as fast.
+	const float SpeedN = FMath::Clamp((Speed - 3500.f) / 5500.f, 0.f, 1.f);
+	const int32 Active = FMath::RoundToInt(FMath::Lerp(NumSpecks * 0.3f, (float)NumSpecks, SpeedN));
+	const float SpeckLen = FMath::Max(Speed * 0.012f, 20.f);
+	TArray<FTransform> Sx;
+	Sx.SetNum(NumSpecks);
+	for (int32 i = 0; i < NumSpecks; ++i)
+	{
+		FVector& P = SpeckPos[i];
+		P += Rel * Dt;
+		if (P.Z > 1500.f || FVector2D(P.X, P.Y).Size() > 900.f)
+		{
+			const float A = Rng.FRandRange(0.f, 2.f * PI), R = Rng.FRandRange(150.f, 700.f);
+			P = FVector(FMath::Cos(A) * R, FMath::Sin(A) * R, -1500.f + Rng.FRandRange(0.f, 300.f));
+		}
+		const float Th = i < Active ? 0.006f + 0.004f * (i % 3) : 0.f;
+		Sx[i] = FTransform(Align, C + P, FVector(Th, Th, i < Active ? SpeckLen / 100.f : 0.f));
+	}
+	Specks->BatchUpdateInstancesTransforms(0, Sx, true, true);
+
+	// Scraps of envelope fabric: flutter, lag the air (they are falling too, just slower).
+	const float ScrapShare = FMath::Clamp(1.f - FW->FallTime / 70.f, 0.25f, 1.f);
+	for (int32 i = 0; i < Scraps.Num(); ++i)
+	{
+		FScrap& S = Scraps[i];
+		S.Pos += Rel * S.Drag * Dt;
+		S.Rot += S.Spin * Dt;
+		if (S.Pos.Z > 6000.f || i >= FMath::CeilToInt(Scraps.Num() * ScrapShare))
+		{
+			S.Pos = FVector(Rng.FRandRange(-2500.f, 2500.f), Rng.FRandRange(-2500.f, 2500.f), -6000.f - Rng.FRandRange(0.f, 2000.f));
+		}
+		S.Comp->SetWorldLocation(C + S.Pos);
+		S.Comp->SetWorldRotation(S.Rot);
+	}
 
 	// Cloud wisps rising past the camera.
 	NextPuff -= Dt * FMath::Max(FW->CloudDensity, 0.f) * FMath::Clamp(FW->PlayerFallSpeed / 5500.f, 0.85f, 1.8f);

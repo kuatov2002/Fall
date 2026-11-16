@@ -8,6 +8,9 @@
 #include "EngineUtils.h"
 #include "FallEnemy.h"
 #include "FallArt.h"
+#include "FallAnimInstance.h"
+#include "Sound/SoundBase.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "NiagaraSystem.h"
 #include "FallCombatData.h"
 #include "FreefallGameMode.h"
@@ -94,6 +97,38 @@ void AFallPlayer::BeginPlay()
 	WindWave = NewObject<UFallWindWave>(this);
 	WindAudio->SetSound(WindWave);
 	WindAudio->Play();
+	{
+		const UFallArtData* Art = UFallArtData::Get();
+		for (const TCHAR* Key : {TEXT("WindLow"), TEXT("WindMid"), TEXT("WindHigh"), TEXT("WindFlutter")})
+		{
+			const TSoftObjectPtr<USoundBase>* S = Art->Sounds.Find(Key);
+			USoundBase* Snd = S ? S->LoadSynchronous() : nullptr;
+			UAudioComponent* A = NewObject<UAudioComponent>(this);
+			A->SetupAttachment(RootComponent);
+			A->bAllowSpatialization = false;
+			A->bAutoActivate = false;
+			A->RegisterComponent();
+			if (Snd)
+			{
+				A->SetSound(Snd);
+				A->SetVolumeMultiplier(0.f);
+				A->Play(FMath::FRandRange(0.f, 20.f)); // each layer starts at a different point of its loop
+			}
+			WindLayers.Add(A);
+		}
+		if (UMaterialInterface* PP = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_ScreenWind.M_FF_ScreenWind")))
+		{
+			ScreenWind = UMaterialInstanceDynamic::Create(PP, this);
+			Camera->PostProcessSettings.AddBlendable(ScreenWind, 1.f);
+		}
+		// Grading: cool shadows, warm highlights, bloom on fire and sun, no crushed blacks.
+		FPostProcessSettings& PS = Camera->PostProcessSettings;
+		PS.bOverride_ColorGainShadows = true; PS.ColorGainShadows = FVector4(0.94f, 0.98f, 1.08f, 1.f);
+		PS.bOverride_ColorGainHighlights = true; PS.ColorGainHighlights = FVector4(1.07f, 1.0f, 0.9f, 1.f);
+		PS.bOverride_ColorOffsetShadows = true; PS.ColorOffsetShadows = FVector4(0.004f, 0.008f, 0.016f, 0.f);
+		PS.bOverride_BloomIntensity = true; PS.BloomIntensity = 0.9f;
+		PS.bOverride_AutoExposureBias = true; PS.AutoExposureBias = 0.2f;
+	}
 }
 
 void AFallPlayer::ResetBody()
@@ -399,6 +434,11 @@ void AFallPlayer::Fire()
 		FX->Flash(Muzzle, 35.f, FLinearColor(1.f, 0.7f, 0.35f), 0.04f);
 		const UFallArtData* Art = UFallArtData::Get();
 		FX->SpawnOn(Art->MuzzleFlash.LoadSynchronous(), WeaponMesh, Muzzle, 0.6f, MuzzleForward().Rotation());
+		if (WeaponMesh)
+		{
+			const FTransform GT = WeaponMesh->GetComponentTransform();
+			FX->Casing(GT.TransformPosition(FVector(-4.f, 2.f, 5.f)), GT.TransformVectorNoScale(FVector(0.f, 1.f, 0.6f)).GetSafeNormal() * 350.f);
+		}
 	}
 	FallSynth::Play(this, FallSynth::EKind::Gunshot, FVector::ZeroVector, 0.55f, FMath::FRandRange(0.95f, 1.05f));
 	AddRecoil(1.f);
@@ -670,19 +710,91 @@ void AFallPlayer::UpdateCamera(float Dt)
 		CameraArm->TargetOffset += FVector(0.f, 0.f, 200.f * CanopyCam);
 		Camera->SetFieldOfView(Camera->FieldOfView + 10.f * CanopyCam);
 	}
-	if (GetWorld()->GetTimeSeconds() > 1.f) Camera->PostProcessSettings.MotionBlurAmount = 0.2f;
+	if (GetWorld()->GetTimeSeconds() > 1.f) Camera->PostProcessSettings.MotionBlurAmount = FMath::Lerp(0.2f, 0.55f, SpeedN) * (1.f - CanopyCam);
+
+	// Inside the cloud deck: white veil and frost at the edges; out of it the frost melts slower than the veil.
+	if (const UFallWorldSubsystem* FWc = UFallWorldSubsystem::Get(this))
+	{
+		float InCloud = 0.f;
+		if (const AFallPlanet* Pl = FWc->Planet.Get())
+		{
+			const float Km = FWc->Altitude / 1000.f;
+			InCloud = FMath::SmoothStep((float)Pl->CloudDeck.X - 0.1f, (float)Pl->CloudDeck.X + 0.15f, Km) * (1.f - FMath::SmoothStep((float)Pl->CloudDeck.X + (float)Pl->CloudDeck.Y - 0.15f, (float)Pl->CloudDeck.X + (float)Pl->CloudDeck.Y + 0.1f, Km));
+		}
+		CloudVeil = FMath::FInterpTo(CloudVeil, InCloud, Dt, InCloud > CloudVeil ? 3.f : 5.f);
+		Frost = FMath::FInterpTo(Frost, FMath::Max(InCloud, 0.f), Dt, InCloud > Frost ? 1.5f : 0.25f);
+	}
+	if (ScreenWind)
+	{
+		ScreenWind->SetScalarParameterValue("Strength", FMath::SmoothStep(0.45f, 1.f, SpeedN) * (1.f - CanopyCam) + FovKick * 0.02f);
+		ScreenWind->SetScalarParameterValue("Frost", Frost * 0.9f);
+		ScreenWind->SetScalarParameterValue("Veil", CloudVeil * 0.7f);
+	}
+	// Three recorded wind layers by speed and pose; the whistle dies the moment you flare out.
+	if (WindLayers.Num() == 4)
+	{
+		const bool bBrake = Dive < -0.3f;
+		const float Under = 1.f - CanopyCam;
+		const float Target[4] = {
+			(0.35f + 0.45f * SpeedN) * FMath::Lerp(0.35f, 1.f, Under),
+			(0.15f + 0.75f * SpeedN) * Under,
+			FMath::SmoothStep(0.45f, 1.f, SpeedN) * (bBrake ? 0.f : 0.85f) * Under,
+			(0.25f + 0.55f * SpeedN) * Under + 0.25f * CanopyCam};
+		const float Rate[4] = {2.f, 3.f, bBrake ? 12.f : 2.5f, 3.f};
+		for (int32 i = 0; i < 4; ++i)
+		{
+			UAudioComponent* A = WindLayers[i];
+			if (!A || !A->Sound) continue;
+			LayerVol[i] = FMath::FInterpTo(LayerVol[i], Target[i], Dt, Rate[i]);
+			A->SetVolumeMultiplier(LayerVol[i]);
+			A->SetPitchMultiplier(FMath::Lerp(0.85f, 1.2f, SpeedN));
+		}
+		if (WindLayers[1]) { WindLayers[1]->SetLowPassFilterEnabled(true); WindLayers[1]->SetLowPassFilterFrequency(FMath::Lerp(900.f, 16000.f, SpeedN) * FMath::Lerp(0.4f, 1.f, Under)); }
+	}
 
 	if (WindWave)
 	{
-		WindWave->Gain.store(FMath::Lerp(0.25f, 0.9f, SpeedN));
+		WindWave->Gain.store(FMath::Lerp(0.12f, 0.45f, SpeedN) * (1.f - CanopyCam * 0.8f));
 		WindWave->Brightness.store(FMath::Lerp(0.2f, 0.85f, SpeedN));
 		WindWave->Whistle.store(FMath::Clamp((SpeedN - 0.5f) * 2.f, 0.f, 1.f));
 		WindWave->Buffet.store(FMath::Lerp(0.3f, 1.f, SpeedN));
 	}
 }
 
+void AFallPlayer::BeginIntro()
+{
+	bInIntro = true;
+	FallSpeed = 0.f;
+	VelocityH = FVector::ZeroVector;
+	BodyPivot->SetRelativeRotation(FRotator::ZeroRotator);
+	Mesh->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+	if (WeaponMesh) WeaponMesh->SetVisibility(false);
+}
+
+void AFallPlayer::EndIntro(const FVector& ThrowDir)
+{
+	bInIntro = false;
+	Mesh->SetAnimationMode(EAnimationMode::AnimationBlueprint);
+	Mesh->SetAnimInstanceClass(UFallAnimInstance::StaticClass());
+	if (UFallAnimInstance* AI = Cast<UFallAnimInstance>(Mesh->GetAnimInstance())) AI->AnimData = AnimData;
+	if (WeaponMesh) WeaponMesh->SetVisibility(true);
+	FallSpeed = 0.f;
+	AddHorizontalImpulse(FVector(ThrowDir.X, ThrowDir.Y, 0.f).GetSafeNormal() * 900.f);
+	AddImpulse(ThrowDir, 3.f);
+	AddShake(1.5f);
+	HitStop(0.06f);
+	if (APlayerController* PC = Cast<APlayerController>(GetController())) PC->SetControlRotation(FRotator(22.f, ThrowDir.Rotation().Yaw, 0.f)); // the same view as a plain start
+}
+
 void AFallPlayer::Tick(float DeltaSeconds)
 {
+	if (bInIntro)
+	{
+		AActor::Tick(DeltaSeconds);
+		FallSpeed = 0.f;
+		if (UFallWorldSubsystem* FWi = UFallWorldSubsystem::Get(this)) { FWi->PlayerFallSpeed = 0.f; FWi->PlayerVelocityH = FVector::ZeroVector; }
+		return;
+	}
 	if (HitStopLeft > 0.f)
 	{
 		HitStopLeft -= FApp::GetDeltaTime();

@@ -47,7 +47,7 @@ public:
 	static AFallDirector* Get(const UObject* WorldContext);
 
 	/** Restart the fall at a time (restart points, review runs). */
-	void JumpTo(float T);
+	void JumpTo(float T, bool bFromIntro = false);
 
 	virtual void Tick(float DeltaSeconds) override;
 	virtual bool ShouldTickIfViewportsOnly() const override { return true; }

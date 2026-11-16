@@ -65,6 +65,7 @@ public:
 
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> Pack;
 	virtual UMaterialInterface* RoleMaterial() const override;
+	UPROPERTY() TObjectPtr<class UNiagaraComponent> Exhaust;
 
 	/** At most this many attack warnings at the same time (readability). */
 	static int32 ActiveTelegraphs;

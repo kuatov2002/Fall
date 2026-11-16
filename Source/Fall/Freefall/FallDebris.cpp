@@ -87,6 +87,7 @@ void AFallDebris::BuildFromMesh(UStaticMesh* InMesh, float S, bool bInGrabbable,
 	}
 	Box->SetBoxExtent(Ext);
 	if (bHollow) Box->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	if (bInBurning && InMass >= 2.f && FMath::FRand() < 0.5f) CookOff = FMath::FRandRange(3.f, 9.f);
 	if (bBurning)
 	{
 		const UFallArtData* Art = UFallArtData::Get();
@@ -245,6 +246,16 @@ void AFallDebris::Tick(float Dt)
 	if (Holder.IsValid())
 	{
 		Mover->Spin = FMath::RInterpTo(Mover->Spin, FRotator::ZeroRotator, Dt, 3.f);
+	}
+	if (CookOff > 0.f)
+	{
+		CookOff -= Dt;
+		if (CookOff <= 0.f)
+		{
+			if (AFallFX* FX = AFallFX::Get(this)) FX->Explosion(GetActorLocation(), FMath::Clamp(Box->GetUnscaledBoxExtent().GetMax() / 300.f, 0.6f, 2.5f));
+			FallSynth::Play(this, FallSynth::EKind::Explosion, GetActorLocation(), 0.7f, 1.1f);
+			Mover->Spin += FRotator(FMath::FRandRange(-30.f, 30.f), FMath::FRandRange(-30.f, 30.f), 0.f);
+		}
 	}
 	if (bBurning)
 	{
