@@ -44,6 +44,7 @@ FFallPose FallComputeTargetPose(const UFallAnimData& D, const FFallAnimInput& In
 	FFallPose P;
 	const float Dv = FMath::Clamp(In.Dive, -1.f, 1.f);
 	if (Dv < 0.f) P = FFallPose::Blend(Belly, PoseOr(D, "Brake"), Smooth(-Dv));
+	else if (In.bDiveExit) P = FFallPose::Blend(Belly, PoseOr(D, "HeadDown"), Smooth(Dv)); // arms come forward first, no track on the way out
 	else if (Dv < 0.5f) P = FFallPose::Blend(Belly, PoseOr(D, "Track"), Smooth(Dv / 0.5f));
 	else P = FFallPose::Blend(PoseOr(D, "Track"), PoseOr(D, "HeadDown"), Smooth((Dv - 0.5f) / 0.5f));
 
@@ -291,6 +292,15 @@ void FFallAnimProxy::SolveLimb(FLimbRef& L, const FFallLimb& P, const FVector Ax
 		const float W = Smooth(In.AimWeight);
 		DU = FMath::Lerp(DU, AU, W).GetSafeNormal();
 		DL = FMath::Lerp(DL, Aim, W).GetSafeNormal();
+	}
+
+	// Limp: the limbs trail with the airflow.
+	if (In.Trail > 0.f)
+	{
+		const FVector Out = Axes[kRight] * (L.bRight ? -1.f : 1.f);
+		const float W = Smooth(In.Trail);
+		DU = FMath::Lerp(DU, (In.WindDirCS + Out * 0.6f).GetSafeNormal(), W * 0.7f).GetSafeNormal();
+		DL = FMath::Lerp(DL, (In.WindDirCS + Out * 0.3f).GetSafeNormal(), W * 0.85f).GetSafeNormal();
 	}
 
 	// Two-bone IK to a hand target (grab), elbow keeps the side of the posed elbow.

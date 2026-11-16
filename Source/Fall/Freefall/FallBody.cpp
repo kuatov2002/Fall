@@ -243,7 +243,7 @@ bool AFallBody::ReceiveHit(const FVector& PushDirWorld, float Strength, float Da
 	const FVector ChestLocal = AttQ.RotateVector(FVector::UpVector);
 	AttW += (ChestLocal ^ LocalPush) * Strength * 5.f;
 	Health = FMath::Max(0.f, Health - Damage);
-	Flash(FLinearColor(1.f, 0.95f, 0.9f), 1.f + 0.5f * Strength);
+	Flash(FLinearColor(1.f, 0.95f, 0.9f), 0.7f + 0.3f * Strength);
 	return Health <= 0.f;
 }
 
@@ -285,6 +285,7 @@ void AFallBody::UpdateBody(float Dt)
 	FFallAnimInput Scratch;
 	FFallAnimInput& In = AI ? AI->Input : Scratch;
 	In.Wind = FMath::Clamp(Control.AirVelocity.Size() / 8800.f, 0.f, 1.f);
+	In.bDiveExit = Control.Dive < Dive - 0.05f && Dive > 0.f;
 	In.Dive = Dive;
 	In.Bank = Bank;
 	In.Wind = FMath::Clamp(Control.AirVelocity.Size() / 8800.f, 0.f, 1.f);
@@ -352,6 +353,8 @@ void AFallBody::UpdateBody(float Dt)
 			In.HandIKWeight[h] = HandWeight[h];
 		}
 		In.HitCS += MeshRot.UnrotateVector(PendingHit);
+		In.WindDirCS = MeshRot.UnrotateVector(Control.AirVelocity.GetSafeNormal(UE_SMALL_NUMBER, FVector::UpVector));
+		In.Trail = OverridePose == "Limp" ? OverrideWeight : 0.f;
 		In.Recoil += PendingRecoil;
 	}
 	PendingHit = FVector::ZeroVector;
@@ -364,7 +367,7 @@ void AFallBody::UpdateBody(float Dt)
 
 	if (FlashMID)
 	{
-		FlashAmount = FMath::FInterpTo(FlashAmount, 0.f, Dt, 9.f);
+		FlashAmount = FMath::FInterpTo(FlashAmount, 0.f, Dt, 14.f);
 		LowPulse = FMath::FInterpTo(LowPulse, 0.f, Dt, 3.f);
 		const float Fl = FMath::Clamp(FlashAmount, 0.f, 1.f);
 		FlashMID->SetScalarParameterValue("Intensity", RimIntensity + FlashAmount + LowPulse * 2.f);

@@ -362,7 +362,7 @@ void AFallDirector::Tick(float Dt)
 		{
 			LandTime += Dt;
 			FW->Altitude = FW->GroundHeightAt(P->GetActorLocation()) + 1.f;
-			Canopy->SetWorldLocation(Top + P->GetActorForwardVector() * 300.f * FMath::Min(LandTime, 2.f) - FVector(0, 0, 350.f * FMath::Min(LandTime, 2.f)));
+			Canopy->SetWorldLocation(Top + P->GetActorForwardVector() * 900.f * FMath::Min(LandTime, 2.f) - FVector(0, 0, 300.f * FMath::Min(LandTime, 2.f)));
 			Canopy->SetWorldRotation(FRotator(-35.f * FMath::Min(LandTime, 2.f), P->GetActorRotation().Yaw, 0.f));
 			if (LandTime > 1.5f && !bEnded)
 			{

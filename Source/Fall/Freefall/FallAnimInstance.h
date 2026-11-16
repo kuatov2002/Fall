@@ -30,6 +30,9 @@ struct FFallAnimInput
 	FVector HitCS = FVector::ZeroVector;   // accumulated push direction * strength since last frame
 	float Recoil = 0.f;                    // accumulated since last frame
 	int32 Seed = 0;
+	FVector WindDirCS = FVector(0.f, 0.f, 1.f); // where the air pushes the limbs, component space
+	float Trail = 0.f;                          // 0..1, limbs trail with the air (limp bodies)
+	bool bDiveExit = false;                     // coming out of the dive: go straight to belly, not through the track
 };
 
 /** Reference pose in component space and the body basis (right, front, up) derived from it. */

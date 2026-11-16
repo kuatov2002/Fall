@@ -585,11 +585,11 @@ void AFallPlayer::UpdateCombat(float Dt)
 	DamagePulse = FMath::FInterpTo(DamagePulse, 0.f, Dt, 2.5f);
 	const float Low = 1.f - FMath::Clamp(Health / MaxHealth, 0.f, 1.f);
 	Camera->PostProcessSettings.bOverride_VignetteIntensity = true;
-	Camera->PostProcessSettings.VignetteIntensity = 0.35f + DamagePulse * 0.9f + Low * 0.5f;
+	Camera->PostProcessSettings.VignetteIntensity = 0.35f + FMath::Min(DamagePulse * 0.5f + Low * 0.25f, 0.35f);
 	Camera->PostProcessSettings.bOverride_SceneColorTint = true;
 	Camera->PostProcessSettings.SceneColorTint = FLinearColor(1.f, 1.f - DamagePulse * 0.35f, 1.f - DamagePulse * 0.4f);
 	Camera->PostProcessSettings.bOverride_ColorSaturation = true;
-	Camera->PostProcessSettings.ColorSaturation = FVector4(1.f, 1.f, 1.f, 1.f - Low * 0.6f);
+	Camera->PostProcessSettings.ColorSaturation = FVector4(1.f, 1.f, 1.f, 1.f - Low * 0.45f);
 	if (Low > 0.5f) PulseLowHealth(0.15f * (0.5f + 0.5f * FMath::Sin(Now * 6.f)) * Low);
 }
 
@@ -629,7 +629,10 @@ void AFallPlayer::UpdateCamera(float Dt)
 	}
 	if (bHasParachute) ChaseBias = FMath::FInterpTo(ChaseBias, 0.f, Dt, 1.5f);
 	DiveBias += ChaseBias;
-	ChaseShoulder = FMath::FInterpTo(ChaseShoulder, ChaseBias < -2.f ? 1.f : 0.f, Dt, 1.5f);
+	bool bCarrierClose = false;
+	for (TActorIterator<AFallEnemy> It(GetWorld()); It; ++It)
+		if (It->GetType() == EFallEnemyType::Target && !bHasParachute && FVector::Dist(It->GetActorLocation(), GetActorLocation()) < 1800.f) bCarrierClose = true;
+	ChaseShoulder = FMath::FInterpTo(ChaseShoulder, (ChaseBias < -2.f || bCarrierClose) ? 1.f : 0.f, Dt, 1.5f);
 	CameraArm->SetWorldRotation(FRotator(CR.Pitch + DiveBias, CR.Yaw, 0.f) + Shake);
 	ArmPunch = FMath::FInterpTo(ArmPunch, ArmPunchTarget, Dt, 7.f);
 	ArmPunchTarget = FMath::FInterpTo(ArmPunchTarget, 0.f, Dt, 2.5f);

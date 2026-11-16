@@ -13,6 +13,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 
 void UFallEnemyData::ApplyDefaults(UFallEnemyData* D, EFallEnemyType Type)
 {
@@ -133,6 +134,7 @@ void AFallEnemy::BeginPlay()
 	}
 	if (GetType() == EFallEnemyType::Heavy)
 	{
+		BodyPivot->SetRelativeScale3D(FVector(1.25f)); // a big man: readable as the heavy at a glance
 		BuildTurret();
 	}
 }
@@ -245,7 +247,7 @@ void AFallEnemy::BuildTurret()
 	TurretHead->RegisterComponent();
 	Part(TurretHead, Cube, FVector(0, 0, 0), FRotator::ZeroRotator, FVector(1.2f, 0.9f, 0.7f), FLinearColor(0.1f, 0.1f, 0.09f));
 	Part(TurretHead, Cyl, FVector(110.f, 0, 8.f), FRotator(-90.f, 0, 0), FVector(0.25f, 0.25f, 1.8f), FLinearColor(0.03f, 0.03f, 0.03f));
-	Part(TurretHead, Cube, FVector(55.f, 0, 25.f), FRotator::ZeroRotator, FVector(0.12f, 1.9f, 1.5f), FLinearColor(0.55f, 0.52f, 0.45f));
+	Part(TurretHead, Cube, FVector(55.f, 0, 25.f), FRotator::ZeroRotator, FVector(0.12f, 1.9f, 1.5f), FLinearColor(0.85f, 0.83f, 0.78f));
 	Part(TurretHead, Cube, FVector(62.f, 0, 62.f), FRotator::ZeroRotator, FVector(0.04f, 1.9f, 0.12f), FLinearColor(0.9f, 0.6f, 0.05f));
 	Part(TurretHead, Cube, FVector(62.f, 0, -12.f), FRotator::ZeroRotator, FVector(0.04f, 1.9f, 0.12f), FLinearColor(0.9f, 0.6f, 0.05f));
 	Part(TurretHead, Cube, FVector(56.f, 0, 25.f), FRotator::ZeroRotator, FVector(0.1f, 0.4f, 0.2f), Data->AccentColor * 3.f);
@@ -480,8 +482,11 @@ void AFallEnemy::TickShooter(float Dt, AFallPlayer* P)
 		break;
 	case EFallEnemyState::Hold:
 	case EFallEnemyState::Cooldown:
+	{
 		Control.bAim = false;
-		if (NextAction <= 0.f && ToP.Size() < 4500.f && ActiveTelegraphs < 1)
+		bool bOtherWarning = false;
+		for (TActorIterator<AFallEnemy> It(GetWorld()); It; ++It) if (*It != this && It->IsTelegraphing()) bOtherWarning = true;
+		if (NextAction <= 0.f && ToP.Size() < 4500.f && ActiveTelegraphs < 1 && !bOtherWarning)
 		{
 			State = EFallEnemyState::Telegraph;
 			StateTime = 0.f;
@@ -489,6 +494,7 @@ void AFallEnemy::TickShooter(float Dt, AFallPlayer* P)
 			FallSynth::Play(this, FallSynth::EKind::Charge, GetActorLocation(), 0.9f);
 		}
 		break;
+	}
 	case EFallEnemyState::Telegraph:
 		// 0.6 s: the head turns first, then the gun arm comes up and the body braces (spreads to brake); the red laser
 		// locks on the player. The aim during the burst lags behind this.
@@ -532,10 +538,13 @@ void AFallEnemy::TickTarget(float Dt, AFallPlayer* P)
 {
 	// A yellow flare trail from the container: the parachute is always findable, without any HUD marker.
 	FlareTimer -= Dt;
-	if (Pack && Pack->IsVisible() && FlareTimer <= 0.f && (State == EFallEnemyState::Flee || State == EFallEnemyState::Stunned))
+	const float ToPlayer = FVector::Dist(GetActorLocation(), P->GetActorLocation());
+	if (Pack && Pack->IsVisible() && FlareTimer <= 0.f && State == EFallEnemyState::Flee)
 	{
 		FlareTimer = 0.05f;
-		if (AFallFX* FX = AFallFX::Get(this)) FX->Sprite(Pack->GetComponentLocation(), FVector(0, 0, -OwnFall * 0.7f), 60.f, 420.f, 1.6f, FLinearColor(1.f, 0.75f, 0.1f), 0.85f, true, 6.f);
+		const float Near = FMath::SmoothStep(800.f, 1600.f, ToPlayer);
+		if (Near > 0.05f)
+			if (AFallFX* FX = AFallFX::Get(this)) FX->Sprite(Pack->GetComponentLocation(), FVector(0, 0, -OwnFall * 0.7f), 60.f, 420.f, 1.6f, FLinearColor(1.f, 0.75f, 0.1f), 0.85f * Near, true, 6.f);
 	}
 	const FVector PP = P->GetActorLocation();
 	const FVector ToP = PP - GetActorLocation();
