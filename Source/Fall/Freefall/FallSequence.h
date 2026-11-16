@@ -101,7 +101,7 @@ public:
 
 	/** Height above the ground at which a carried parachute opens, metres. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sequence")
-	float DeployHeight = 320.f;
+	float DeployHeight = 260.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sequence", meta = (TitleProperty = "{Time} {Type} {Note}"))
 	TArray<FFallSequenceEvent> Events;

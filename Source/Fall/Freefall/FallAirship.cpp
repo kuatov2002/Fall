@@ -107,7 +107,10 @@ void AFallAirship::Breakup()
 		for (int32 i = 0; i < C.Count; ++i)
 		{
 			const FVector Local(FMath::FRandRange(-3200.f, 3200.f), FMath::FRandRange(-700.f, 700.f), FMath::FRandRange(-900.f, 600.f));
-			const FVector Out = FVector(Local.X * 0.1f, Local.Y, Local.Z).GetSafeNormal() * FMath::FRandRange(2.f, 9.f);
+			const FVector World = T.TransformPosition(Local);
+			const FVector ToPlayer = (PlayerPos - World) * FVector(1.f, 1.f, 0.f);
+			// Horizontal drift that brings the chunk over the player's line within a few seconds, plus some scatter.
+			const FVector Out = ToPlayer / FMath::FRandRange(450.f, 900.f) + FMath::VRand().GetSafeNormal2D() * FMath::FRandRange(1.f, 4.f);
 			AFallDebris* D = Sp->SpawnPiece(C.Type, T.TransformPosition(Local) - PlayerPos, FVector(Out.X, Out.Y, 0.f), C.Scale * FMath::FRandRange(0.8f, 1.2f), C.Type == EFallDebrisType::Engine || FMath::FRand() < 0.3f);
 			if (D)
 			{

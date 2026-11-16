@@ -336,7 +336,8 @@ void AFallDebrisSpawner::Tick(float Dt)
 			const FVector BodyVelH = PL ? PL->VelocityH : FVector::ZeroVector;
 			const FVector RelV = FVector(D->Mover->VelocityH - BodyVelH) + FVector(0, 0, FW->PlayerFallSpeed - D->Mover->FallSpeed);
 			const float Strength = FMath::Clamp(RelV.Size() / 1500.f * D->Mass, 0.4f, 3.f);
-			B->ReceiveHit(Push + RelV.GetSafeNormal() * 0.5f, Strength, 8.f + 9.f * Strength);
+			const bool bHeldPlatform = D->Holder.IsValid();
+			B->ReceiveHit(Push + RelV.GetSafeNormal() * 0.5f, Strength, bHeldPlatform ? 0.f : 6.f + 7.f * Strength);
 			if (AFallPlayer* P = Cast<AFallPlayer>(*B))
 			{
 				P->AddHorizontalImpulse(FVector(Push.X, Push.Y, 0.f).GetSafeNormal() * 700.f * Strength);

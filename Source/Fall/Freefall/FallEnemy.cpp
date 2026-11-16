@@ -50,7 +50,7 @@ AFallEnemy::AFallEnemy()
 	AIControllerClass = nullptr;
 	RimColor = FLinearColor(1.f, 0.3f, 0.2f);
 	HarnessColor = FLinearColor(0.02f, 0.02f, 0.022f);
-	RimIntensity = 0.3f;
+	RimIntensity = 0.6f;
 }
 
 AFallEnemy* AFallEnemy::Spawn(UWorld* World, EFallEnemyType Type, const FVector& RelPos, UFallEnemyData* InData)
@@ -156,13 +156,13 @@ void AFallEnemy::BuildOutfit()
 	// Same harness, red visor; the heavy wears a bulkier vest; the target carries the only parachute container.
 	AttachProp("head", TEXT("Sphere"), FVector(0, -1.5f, 9.5f), FRotator::ZeroRotator, FVector(23.f, 26.f, 23.f), FLinearColor(0.03f, 0.03f, 0.03f), 0.35f, 0.2f);
 	AttachProp("head", TEXT("Cube"), FVector(0, 9.5f, 6.f), FRotator::ZeroRotator, FVector(17.f, 4.f, 5.f), Data ? Data->AccentColor * 2.f : FLinearColor::Red, 0.1f, 0.6f);
-	if (UStaticMeshComponent* Beacon = AttachProp("head", TEXT("Sphere"), FVector(0, -2.f, 22.f), FRotator::ZeroRotator, FVector(7.f), FLinearColor::Black, 0.3f, 0.f))
+	if (UStaticMeshComponent* Beacon = AttachProp("head", TEXT("Sphere"), FVector(0, -2.f, 22.f), FRotator::ZeroRotator, FVector(11.f), FLinearColor::Black, 0.3f, 0.f))
 	{
 		if (UMaterialInterface* U = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Unlit.M_FF_Unlit")))
 		{
 			UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(U, this);
 			MID->SetVectorParameterValue("Color", Data ? Data->AccentColor : FLinearColor::Red);
-			MID->SetScalarParameterValue("Intensity", 30.f);
+			MID->SetScalarParameterValue("Intensity", 60.f);
 			Beacon->SetMaterial(0, MID);
 		}
 	}
@@ -175,6 +175,17 @@ void AFallEnemy::BuildOutfit()
 	if (T == EFallEnemyType::Heavy)
 	{
 		AttachProp("spine_03", TEXT("Cube"), FVector(0, 4.f, 4.f), FRotator::ZeroRotator, FVector(40.f, 34.f, 40.f), FLinearColor(0.08f, 0.08f, 0.07f), 0.5f, 0.4f);
+		// Glowing power pack on the back: the weak point, visible when you flank him.
+		if (UStaticMeshComponent* Weak = AttachProp("spine_03", TEXT("Cube"), FVector(0, -22.f, 4.f), FRotator::ZeroRotator, FVector(26.f, 10.f, 30.f), FLinearColor::Black, 0.3f, 0.f))
+		{
+			if (UMaterialInterface* U = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Unlit.M_FF_Unlit")))
+			{
+				UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(U, this);
+				MID->SetVectorParameterValue("Color", FLinearColor(1.f, 0.45f, 0.05f));
+				MID->SetScalarParameterValue("Intensity", 25.f);
+				Weak->SetMaterial(0, MID);
+			}
+		}
 	}
 	if (T == EFallEnemyType::Target)
 	{
@@ -234,7 +245,9 @@ void AFallEnemy::BuildTurret()
 	TurretHead->RegisterComponent();
 	Part(TurretHead, Cube, FVector(0, 0, 0), FRotator::ZeroRotator, FVector(1.2f, 0.9f, 0.7f), FLinearColor(0.1f, 0.1f, 0.09f));
 	Part(TurretHead, Cyl, FVector(110.f, 0, 8.f), FRotator(-90.f, 0, 0), FVector(0.25f, 0.25f, 1.8f), FLinearColor(0.03f, 0.03f, 0.03f));
-	Part(TurretHead, Cube, FVector(55.f, 0, 25.f), FRotator::ZeroRotator, FVector(0.12f, 1.9f, 1.5f), FLinearColor(0.35f, 0.33f, 0.28f));
+	Part(TurretHead, Cube, FVector(55.f, 0, 25.f), FRotator::ZeroRotator, FVector(0.12f, 1.9f, 1.5f), FLinearColor(0.55f, 0.52f, 0.45f));
+	Part(TurretHead, Cube, FVector(62.f, 0, 62.f), FRotator::ZeroRotator, FVector(0.04f, 1.9f, 0.12f), FLinearColor(0.9f, 0.6f, 0.05f));
+	Part(TurretHead, Cube, FVector(62.f, 0, -12.f), FRotator::ZeroRotator, FVector(0.04f, 1.9f, 0.12f), FLinearColor(0.9f, 0.6f, 0.05f));
 	Part(TurretHead, Cube, FVector(56.f, 0, 25.f), FRotator::ZeroRotator, FVector(0.1f, 0.4f, 0.2f), Data->AccentColor * 3.f);
 	Shield = NewObject<UBoxComponent>(P, TEXT("TurretShield"));
 	Shield->SetupAttachment(TurretHead);
@@ -468,7 +481,7 @@ void AFallEnemy::TickShooter(float Dt, AFallPlayer* P)
 	case EFallEnemyState::Hold:
 	case EFallEnemyState::Cooldown:
 		Control.bAim = false;
-		if (NextAction <= 0.f && ToP.Size() < 4500.f && ActiveTelegraphs < 2)
+		if (NextAction <= 0.f && ToP.Size() < 4500.f && ActiveTelegraphs < 1)
 		{
 			State = EFallEnemyState::Telegraph;
 			StateTime = 0.f;

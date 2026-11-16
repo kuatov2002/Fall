@@ -151,4 +151,5 @@ protected:
 	float ArmPunchTarget = 0.f;
 	float CanopyCam = 0.f;
 	float ChaseBias = 0.f;
+	float ChaseShoulder = 0.f;
 };

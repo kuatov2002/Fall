@@ -246,7 +246,12 @@ void AFallDirector::Crash()
 	if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
 	{
 		// Impact: hard cut to black (the canopy ending fades to white instead).
-		if (AFallHUD* HUD = Cast<AFallHUD>(PC->GetHUD())) { HUD->FadeAlpha = 1.f; HUD->FadeColor = FLinearColor::Black; HUD->FadeSpeed = 0.f; }
+		if (AFallHUD* HUD = Cast<AFallHUD>(PC->GetHUD())) { HUD->FadeAlpha = 0.f; HUD->FadeColor = FLinearColor::Black; HUD->FadeSpeed = 0.f; }
+	}
+	if (AFallFX* FX = AFallFX::Get(this))
+	{
+		const FVector G = UFallWorldSubsystem::Get(this)->Player->GetActorLocation() - FVector(0, 0, 150.f);
+		for (int32 i = 0; i < 10; ++i) FX->Sprite(G + FMath::VRand() * 200.f, FMath::VRand() * 1500.f, 300.f, 2500.f, 1.2f, FLinearColor(0.3f, 0.24f, 0.16f), 0.95f, false, 1.f);
 	}
 	UFallWorldSubsystem::Get(this)->NoteEvent("Crash");
 }
@@ -276,7 +281,13 @@ void AFallDirector::Tick(float Dt)
 	if (CrashTime >= 0.f)
 	{
 		CrashTime += Dt;
-		if (CrashTime > 0.35f) JumpTo(Checkpoint);
+		// 4 frames of impact (dust, shake), then a hard cut to black, then the restart.
+		if (CrashTime > 0.13f)
+		{
+			if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
+				if (AFallHUD* HUD = Cast<AFallHUD>(PC->GetHUD())) HUD->FadeAlpha = 1.f;
+		}
+		if (CrashTime > 0.45f) JumpTo(Checkpoint);
 		return;
 	}
 	if (P->bDied)
@@ -304,7 +315,7 @@ void AFallDirector::Tick(float Dt)
 		Fire(S->Events[NextEvent++]);
 	}
 
-	if (FW->bAltitudeLive) FW->Altitude -= P->FallSpeed * Dt * (bCanopy ? FMath::Clamp(CanopyTime - 2.5f, 1.f, 9.f) : 1.f);
+	if (FW->bAltitudeLive) FW->Altitude -= P->FallSpeed * Dt * (bCanopy ? FMath::Clamp((CanopyTime - 1.5f) * 3.f, 1.f, 14.f) : 1.f);
 	else FW->Altitude = S->AltitudeAt(Time);
 
 	const float AGL = FW->HeightAboveGround();
@@ -374,8 +385,8 @@ void AFallDirector::DrawPreview()
 	const FVector O = GetActorLocation();
 
 	// The player at the origin of the preview.
-	DrawDebugCapsule(W, O, 90.f, 30.f, FQuat::Identity, FColor::White, false, -1.f, 0, 3.f);
-	DrawDebugDirectionalArrow(W, O, O + FVector(300.f, 0, 0), 80.f, FColor::White, false, -1.f, 0, 3.f);
+	DrawDebugCapsule(W, O, 90.f, 30.f, FQuat::Identity, FColor::White, false, -1.f, 0, 12.f);
+	DrawDebugDirectionalArrow(W, O, O + FVector(300.f, 0, 0), 80.f, FColor::White, false, -1.f, 0, 12.f);
 
 	auto TypeColor = [](const FFallSequenceEvent& E)
 	{
@@ -398,7 +409,7 @@ void AFallDirector::DrawPreview()
 	};
 
 	int32 Label = 0;
-	auto Text = [&](const FVector& At, const FString& Str, const FColor& C, float Size = 60.f)
+	auto Text = [&](const FVector& At, const FString& Str, const FColor& C, float Size = 260.f)
 	{
 		if (Labels.Num() <= Label)
 		{
@@ -415,7 +426,7 @@ void AFallDirector::DrawPreview()
 		T->SetText(FText::FromString(Str));
 		T->SetTextRenderColor(C);
 		T->SetWorldSize(Size);
-		T->SetWorldRotation(FRotator(0.f, 180.f, 0.f));
+		T->SetWorldRotation(FRotator(0.f, 180.f, 0.f)); // readable from the default editor view (looking down +X)
 	};
 
 	// What is alive or about to appear around PreviewTime.
@@ -428,8 +439,8 @@ void AFallDirector::DrawPreview()
 		{
 			const float Rel = (E.Wave.RelativeSpeed.X + E.Wave.RelativeSpeed.Y) * 0.5f;
 			const float Z = Rel >= 0.f ? -4000.f : 4000.f;
-			DrawDebugCircle(W, O + FVector(0, 0, Z), E.Wave.Spread * 100.f, 48, C, false, -1.f, 0, 4.f, FVector(1, 0, 0), FVector(0, 1, 0), false);
-			DrawDebugDirectionalArrow(W, O + FVector(E.Wave.Spread * 70.f, 0, Z), O + FVector(E.Wave.Spread * 70.f, 0, Z + Rel * 150.f), 200.f, C, false, -1.f, 0, 6.f);
+			DrawDebugCircle(W, O + FVector(0, 0, Z), E.Wave.Spread * 100.f, 48, C, false, -1.f, 0, 16.f, FVector(1, 0, 0), FVector(0, 1, 0), false);
+			DrawDebugDirectionalArrow(W, O + FVector(E.Wave.Spread * 70.f, 0, Z), O + FVector(E.Wave.Spread * 70.f, 0, Z + Rel * 150.f), 200.f, C, false, -1.f, 0, 24.f);
 			Text(O + FVector(E.Wave.Spread * 100.f, 0, Z), FString::Printf(TEXT("%s %s x%.1f/s  %.0f..%.0f m/s"), *When, *UEnum::GetDisplayValueAsText(E.Wave.Type).ToString(), E.Wave.Density, E.Wave.RelativeSpeed.X, E.Wave.RelativeSpeed.Y), C);
 		}
 		if (Dt < -2.f || Dt > PreviewWindow) continue;
@@ -437,17 +448,17 @@ void AFallDirector::DrawPreview()
 		switch (E.Type)
 		{
 		case EFallEventType::SpawnEnemy:
-			DrawDebugCapsule(W, P, 100.f, 40.f, FQuat::Identity, C, false, -1.f, 0, 4.f);
-			DrawDebugLine(W, O, P, C, false, -1.f, 0, 1.f);
+			DrawDebugCapsule(W, P, 100.f, 40.f, FQuat::Identity, C, false, -1.f, 0, 16.f);
+			DrawDebugLine(W, O, P, C, false, -1.f, 0, 4.f);
 			Text(P + FVector(0, 0, 160.f), FString::Printf(TEXT("%s %s"), *When, *UEnum::GetDisplayValueAsText(E.EnemyType).ToString()), C);
 			break;
 		case EFallEventType::DebrisPiece:
-			DrawDebugBox(W, P, FVector(400.f, 250.f, 150.f) * E.Value, C, false, -1.f, 0, 4.f);
-			DrawDebugDirectionalArrow(W, P, P + E.Velocity * 150.f, 200.f, C, false, -1.f, 0, 4.f);
+			DrawDebugBox(W, P, FVector(400.f, 250.f, 150.f) * E.Value, C, false, -1.f, 0, 16.f);
+			DrawDebugDirectionalArrow(W, P, P + E.Velocity * 150.f, 200.f, C, false, -1.f, 0, 16.f);
 			Text(P + FVector(0, 0, 300.f), FString::Printf(TEXT("%s %s"), *When, *UEnum::GetDisplayValueAsText(E.PieceType).ToString()), C);
 			break;
 		case EFallEventType::OneShot:
-			DrawDebugSphere(W, P, 400.f, 16, C, false, -1.f, 0, 3.f);
+			DrawDebugSphere(W, P, 400.f, 16, C, false, -1.f, 0, 12.f);
 			Text(P + FVector(0, 0, 500.f), FString::Printf(TEXT("%s %s"), *When, *UEnum::GetDisplayValueAsText(E.OneShot).ToString()), C);
 			break;
 		default:
@@ -459,7 +470,7 @@ void AFallDirector::DrawPreview()
 	const FVector PanelO = O + FVector(0.f, -6000.f, -1500.f);
 	const float Len = 12000.f, H = 3000.f;
 	auto TX = [&](float T) { return PanelO + FVector(0.f, T / S->Duration * Len, 0.f); };
-	DrawDebugLine(W, TX(0.f), TX(S->Duration), FColor(90, 90, 90), false, -1.f, 0, 4.f);
+	DrawDebugLine(W, TX(0.f), TX(S->Duration), FColor(90, 90, 90), false, -1.f, 0, 16.f);
 	FVector PrevA, PrevV;
 	for (int32 i = 0; i <= 180; ++i)
 	{
@@ -468,8 +479,8 @@ void AFallDirector::DrawPreview()
 		const FVector V = TX(T) + FVector(0, 0, S->SpeedAt(T) / 100.f * H);
 		if (i > 0)
 		{
-			DrawDebugLine(W, PrevA, A, FColor::White, false, -1.f, 0, 5.f);
-			DrawDebugLine(W, PrevV, V, FColor::Cyan, false, -1.f, 0, 5.f);
+			DrawDebugLine(W, PrevA, A, FColor::White, false, -1.f, 0, 20.f);
+			DrawDebugLine(W, PrevV, V, FColor::Cyan, false, -1.f, 0, 20.f);
 		}
 		PrevA = A; PrevV = V;
 	}
@@ -478,16 +489,16 @@ void AFallDirector::DrawPreview()
 		const FColor C = TypeColor(E);
 		if (E.Type == EFallEventType::SegmentStart)
 		{
-			DrawDebugLine(W, TX(E.Time), TX(E.Time) + FVector(0, 0, H), C, false, -1.f, 0, 6.f);
-			Text(TX(E.Time) + FVector(0, 0, H + 120.f), E.Segment.ToString(), C, 120.f);
+			DrawDebugLine(W, TX(E.Time), TX(E.Time) + FVector(0, 0, H), C, false, -1.f, 0, 24.f);
+			Text(TX(E.Time) + FVector(0, 0, H + 300.f), E.Segment.ToString(), C, 380.f);
 		}
 		else
 		{
-			DrawDebugLine(W, TX(E.Time) - FVector(0, 0, 150.f), TX(E.Time), C, false, -1.f, 0, 8.f);
+			DrawDebugLine(W, TX(E.Time) - FVector(0, 0, 150.f), TX(E.Time), C, false, -1.f, 0, 32.f);
 		}
 	}
-	DrawDebugLine(W, TX(PreviewTime) - FVector(0, 0, 300.f), TX(PreviewTime) + FVector(0, 0, H + 300.f), FColor::Yellow, false, -1.f, 0, 10.f);
-	Text(TX(PreviewTime) - FVector(0, 0, 450.f), FString::Printf(TEXT("%.1f s  %.0f m  %.0f m/s"), PreviewTime, S->AltitudeAt(PreviewTime), S->SpeedAt(PreviewTime)), FColor::Yellow, 140.f);
+	DrawDebugLine(W, TX(PreviewTime) - FVector(0, 0, 300.f), TX(PreviewTime) + FVector(0, 0, H + 300.f), FColor::Yellow, false, -1.f, 0, 40.f);
+	Text(TX(PreviewTime) - FVector(0, 0, 450.f), FString::Printf(TEXT("%.1f s  %.0f m  %.0f m/s"), PreviewTime, S->AltitudeAt(PreviewTime), S->SpeedAt(PreviewTime)), FColor::Yellow, 420.f);
 
 	for (int32 i = Label; i < Labels.Num(); ++i) Labels[i]->SetVisibility(false);
 }

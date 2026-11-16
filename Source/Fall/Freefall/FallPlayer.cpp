@@ -232,7 +232,10 @@ void AFallPlayer::UpdateMovement(float Dt)
 	const FVector Fwd = Yaw.Vector();
 	const FVector Right = FRotationMatrix(Yaw).GetUnitAxis(EAxis::Y);
 	const float Track = FMath::Clamp(1.f - FMath::Abs(Dive - 0.5f) * 2.5f, 0.f, 1.f);
-	const FVector WantH = Right * (InputNow.Slide * M->SlideSpeed * 100.f) + Fwd * (Track * M->TrackForwardSpeed * 100.f);
+	// Diving carries you towards where you look: the flatter the look, the more forward glide (so a target ahead can be caught).
+	const float LookFlat = FMath::Cos(FMath::DegreesToRadians(FMath::Clamp(Camera->GetComponentRotation().Pitch, -90.f, 0.f)));
+	const float DiveGlide = FMath::Max(Dive, 0.f) * LookFlat * M->TrackForwardSpeed * 1.1f;
+	const FVector WantH = Right * (InputNow.Slide * M->SlideSpeed * 100.f) + Fwd * (FMath::Max(Track * M->TrackForwardSpeed, DiveGlide) * 100.f);
 	VelocityH = FMath::Lerp(VelocityH, WantH, FMath::Min(1.f, M->HorizontalRate * Dt));
 	AddActorWorldOffset(VelocityH * Dt);
 
@@ -297,6 +300,7 @@ void AFallPlayer::PushOff()
 	FallSpeed = FMath::Max(8.f, FallSpeed - Dir.Z * M->PushOffSpeed);
 	P->Mover->VelocityH -= FVector(Dir.X, Dir.Y, 0.f) * M->PushOffSpeed * 100.f * 0.3f / P->Mass;
 	P->Mover->FallSpeed += Dir.Z * M->PushOffSpeed * 100.f * 0.3f / P->Mass;
+	P->LastHit = GetWorld()->GetTimeSeconds() + 0.6f;
 	AddShake(0.5f);
 	PendingHit += Dir * 1.2f;
 	FallSynth::Play(this, FallSynth::EKind::Whoosh, FVector::ZeroVector, 0.9f);
@@ -445,6 +449,11 @@ void AFallPlayer::TryKick()
 	}
 	KickTarget = E;
 	bKickApplied = false;
+	if (E)
+	{
+		const FVector To = E->GetActorLocation() - GetActorLocation();
+		AddHorizontalImpulse(FVector(To.X, To.Y, 0.f).GetSafeNormal() * FMath::Clamp((To.Size() - 160.f) / 0.3f, 0.f, 1200.f));
+	}
 	StartKick(bRight);
 	FallSynth::Play(this, FallSynth::EKind::Whoosh, FVector::ZeroVector, 0.6f, 1.3f);
 }
@@ -470,6 +479,7 @@ bool AFallPlayer::ReceiveHit(const FVector& PushDirWorld, float Strength, float 
 	const bool bDead = Super::ReceiveHit(PushDirWorld, Strength, Damage);
 	Flash(FLinearColor(1.f, 0.12f, 0.05f), 0.6f + 0.3f * Strength); // the player's own damage reads red, on the rim
 	LastDamage = GetWorld()->GetTimeSeconds();
+	if (Damage > 0.f) if (UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this)) FW->NoteEvent("PlayerHit");
 	DamagePulse = FMath::Min(1.f, DamagePulse + Damage / 30.f + 0.25f);
 	AddShake(0.15f + 0.1f * Strength);
 	FallSynth::Play(this, FallSynth::EKind::HitBody, FVector::ZeroVector, 0.8f, 0.9f);
@@ -619,20 +629,22 @@ void AFallPlayer::UpdateCamera(float Dt)
 	}
 	if (bHasParachute) ChaseBias = FMath::FInterpTo(ChaseBias, 0.f, Dt, 1.5f);
 	DiveBias += ChaseBias;
+	ChaseShoulder = FMath::FInterpTo(ChaseShoulder, ChaseBias < -2.f ? 1.f : 0.f, Dt, 1.5f);
 	CameraArm->SetWorldRotation(FRotator(CR.Pitch + DiveBias, CR.Yaw, 0.f) + Shake);
 	ArmPunch = FMath::FInterpTo(ArmPunch, ArmPunchTarget, Dt, 7.f);
 	ArmPunchTarget = FMath::FInterpTo(ArmPunchTarget, 0.f, Dt, 2.5f);
 	CameraArm->TargetArmLength = M->ArmLength * Dolly * (1.f + ArmPunch) * (1.f - 0.08f * FMath::Abs(InputNow.Slide));
-	CameraArm->SocketOffset = M->CameraOffset * FMath::Lerp(1.f, Dolly, 0.5f) + FVector(0.f, 0.f, CamAccelOffset);
+	// In the chase the camera moves over the shoulder so the carrier below is not hidden behind the body.
+	CameraArm->SocketOffset = M->CameraOffset * FMath::Lerp(1.f, Dolly, 0.5f) + FVector(0.f, 130.f * ChaseShoulder, CamAccelOffset);
 	// Head-down, the body hangs below the pelvis pivot: aim at its middle.
 	CameraArm->TargetOffset = FVector(0.f, 0.f, -45.f * FMath::Max(Dive, 0.f));
 	// Under the canopy the camera pulls back and up so the canopy and the risers are in frame.
-	CanopyCam = FMath::FInterpTo(CanopyCam, bCanopy ? 1.f : 0.f, Dt, 1.2f);
+	CanopyCam = FMath::FInterpTo(CanopyCam, bCanopy ? 1.f : 0.f, Dt, 0.9f);
 	if (CanopyCam > 0.001f)
 	{
 		// Low and behind, looking up: the body in the lower third, the canopy above it.
-		CameraArm->SetWorldRotation(FRotator(FMath::Lerp(CR.Pitch + DiveBias, 30.f, CanopyCam), CR.Yaw, 0.f) + Shake);
-		CameraArm->TargetArmLength *= FMath::Lerp(1.f, 3.3f, CanopyCam);
+		CameraArm->SetWorldRotation(FRotator(FMath::Lerp(CR.Pitch + DiveBias, 22.f, CanopyCam), CR.Yaw, 0.f) + Shake);
+		CameraArm->TargetArmLength *= FMath::Lerp(1.f, 2.1f, CanopyCam);
 		CameraArm->TargetOffset += FVector(0.f, 0.f, 200.f * CanopyCam);
 		Camera->SetFieldOfView(Camera->FieldOfView + 10.f * CanopyCam);
 	}

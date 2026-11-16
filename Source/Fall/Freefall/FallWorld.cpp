@@ -348,6 +348,11 @@ void AFallSpeedField::Tick(float Dt)
 			const float A = Rng.FRandRange(0.f, 2.f * PI);
 			P = FVector(FMath::Cos(A) * R, FMath::Sin(A) * R, -StreakHalfHeight + Rng.FRandRange(0.f, 400.f));
 		}
+		if (FW->Player.IsValid())
+		{
+			const FVector ToBody = (C + P) - FW->Player->GetActorLocation();
+			if (FVector2D(ToBody.X, ToBody.Y).Size() < 260.f) P.Z = StreakHalfHeight + 1.f; // respawn next frame, away from the body
+		}
 		const float Dist = P.Size();
 		const float Thick = 0.018f + Dist * 0.00001f;
 		Xf[i] = FTransform(Align, C + P, FVector(Thick, Thick, Len / 100.f));
@@ -366,7 +371,7 @@ void AFallSpeedField::Tick(float Dt)
 		const bool bClose = ForceClose > 0 || Rng.FRand() < 0.45f;
 		ForceClose = 0;
 		if (bClose) SinceClose = 0.f;
-		const float BaseSize = Rng.FRandRange(PuffSize.X, PuffSize.Y) * (bClose ? 0.5f : 1.f) * FMath::Lerp(1.f, 1.8f, FMath::Clamp(FW->CloudDensity - 1.f, 0.f, 1.f));
+		const float BaseSize = Rng.FRandRange(PuffSize.X, PuffSize.Y) * (bClose ? 0.5f : 1.f) * FMath::Lerp(1.f, 3.f, FMath::Clamp((FW->CloudDensity - 1.f) / 2.f, 0.f, 1.f));
 		const float A0 = Rng.FRandRange(0.f, 2.f * PI);
 		const float R0 = bClose ? Rng.FRandRange(220.f, 600.f) : Rng.FRandRange(BaseSize * 0.3f + 400.f, 1600.f);
 		++ClusterId;

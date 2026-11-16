@@ -74,7 +74,7 @@ void UFallSequence::BuildDefault()
 	Shot(6.f, EFallOneShot::EngineExplosion, FVector(10.f, -7.f, 14.f), TEXT("Engine pod blows up close"));
 	{
 		FFallSequenceEvent& E = Ev(8.f, EFallEventType::DebrisPiece, TEXT("Big hull section rises slowly from below: brake to meet it, grab it"));
-		E.PieceType = EFallDebrisType::Section; E.Position = FVector(6.f, 0.f, -70.f); E.Velocity = FVector(0.f, 0.f, 6.f); E.Value = 0.85f;
+		E.PieceType = EFallDebrisType::Section; E.Position = FVector(5.f, 0.f, -40.f); E.Velocity = FVector(0.f, 0.f, 8.f); E.Value = 0.85f;
 	}
 	Wave(11.f, EFallDebrisType::Plate, 0.5f, FVector2D(3.f, 8.f), 14.f, 0.4f, 9.f, 0.2f, TEXT("Slow plates to grab and push off"));
 	Wave(14.f, EFallDebrisType::Shards, 2.f, FVector2D(6.f, 14.f), 16.f, 0.4f, 6.f, 0.f, TEXT("Speed reference"));
@@ -83,8 +83,8 @@ void UFallSequence::BuildDefault()
 	// 2. Debris field, 20-70 s: dense cover, the first shooters one at a time, then in pairs.
 	Seg(20.f, "DebrisField", true, TEXT("Dense field of debris, first shooters"));
 	Clouds(20.f, 1.f);
-	Wave(20.f, EFallDebrisType::Plate, 0.8f, FVector2D(3.f, 12.f), 22.f, 0.35f, 50.f, 0.2f, TEXT("Cover plates"), FVector2D(1.1f, 1.6f));
-	Wave(30.f, EFallDebrisType::Section, 0.08f, FVector2D(2.f, 5.f), 18.f, 0.5f, 40.f, 0.3f, TEXT("Big hull sections: real cover"), FVector2D(0.7f, 0.9f));
+	Wave(20.f, EFallDebrisType::Plate, 1.4f, FVector2D(3.f, 12.f), 20.f, 0.5f, 50.f, 0.2f, TEXT("Cover plates"), FVector2D(1.1f, 1.6f));
+	Wave(26.f, EFallDebrisType::Section, 0.15f, FVector2D(2.f, 5.f), 16.f, 0.6f, 44.f, 0.3f, TEXT("Big hull sections: real cover"), FVector2D(0.7f, 0.9f));
 	Wave(20.f, EFallDebrisType::Girder, 0.35f, FVector2D(4.f, 12.f), 24.f, 0.3f, 50.f, 0.f, TEXT("Girders"));
 	Wave(20.f, EFallDebrisType::Crate, 0.4f, FVector2D(6.f, 15.f), 20.f, 0.3f, 50.f, 0.f, TEXT("Cargo: hits hard"));
 	Wave(20.f, EFallDebrisType::Shards, 1.5f, FVector2D(8.f, 16.f), 18.f, 0.5f, 50.f, 0.f, TEXT("Fragments"));
@@ -117,10 +117,11 @@ void UFallSequence::BuildDefault()
 	}
 	Enemy(120.f, EFallEnemyType::Target, FVector(18.f, 4.f, -6.f), TEXT("The one with the parachute"));
 	Ev(122.f, EFallEventType::TargetFlee, TEXT("Target dives away"));
-	Clouds(123.f, 2.5f);
+	Clouds(123.f, 2.f);
+	Clouds(134.f, 3.5f);
 	Enemy(127.f, EFallEnemyType::Shooter, FVector(20.f, -10.f, -15.f), TEXT("Escort shooter"));
 	Enemy(138.f, EFallEnemyType::Wingsuiter, FVector(40.f, 40.f, 10.f), TEXT("Escort wingsuiter"));
-	Clouds(142.f, 0.8f);
+	Clouds(146.f, 0.8f);
 	Wave(150.f, EFallDebrisType::Shards, 1.f, FVector2D(8.f, 14.f), 16.f, 0.4f, 15.f, 0.f, TEXT("Last fragments"));
 	End(169.9f, "Chase");
 

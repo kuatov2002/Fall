@@ -27,7 +27,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon") FLinearColor TracerColor = FLinearColor(1.f, 0.8f, 0.45f);
 
 	/** Kick: reach to start it, reach at impact, damage, push. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Kick") float KickRange = 420.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Kick") float KickRange = 300.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Kick") float KickDamage = 35.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Kick") float KickPush = 2600.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Kick") float KickHitStop = 0.075f;
