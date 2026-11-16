@@ -1,5 +1,6 @@
 #include "FallAnimGallery.h"
 #include "FallBody.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -100,7 +101,10 @@ void AFallAnimGallery::BeginPlay()
 	}
 	bCapture = FParse::Value(FCommandLine::Get(), TEXT("FallGallery="), CaptureDir);
 	if (bCapture) CaptureDir = FPaths::ProjectSavedDir() / TEXT("Review") / CaptureDir;
-	StartEntry(0, bCapture ? 0 : 2);
+	int32 Only = -1;
+	FParse::Value(FCommandLine::Get(), TEXT("FallGalleryOnly="), Only);
+	OnlyEntry = Only;
+	StartEntry(FMath::Max(Only, 0), bCapture ? 0 : 2);
 }
 
 void AFallAnimGallery::StartEntry(int32 Index, int32 InAngle)
@@ -190,7 +194,7 @@ void AFallAnimGallery::ApplyEntry(float Dt)
 	else if (Name.Contains(TEXT("15_canopy")))
 	{
 		if (t > 0.5f) { C.Override = "Canopy"; C.OverrideTarget = 1.f; C.AirVelocity.Z = 600.f; }
-		if (Crossed(0.5f)) Body->AddImpulse(FVector(0, 0, 1), 2.5f);
+		if (Crossed(0.5f)) Body->AddImpulse(FVector(1.f, 0.f, 0.4f), 2.5f);
 	}
 }
 
@@ -220,6 +224,11 @@ void AFallAnimGallery::Tick(float Dt)
 	PrevT = T;
 	T += Dt;
 	ApplyEntry(Dt);
+	if (FParse::Param(FCommandLine::Get(), TEXT("FallAnimDebug")) && FMath::Fmod(T, 1.f) < Dt)
+	{
+		UE_LOG(LogTemp, Display, TEXT("FallGalleryDebug t=%.2f pivot %s handL %s handR %s pelvis %s"), T, *Body->BodyPivot->GetComponentRotation().ToCompactString(),
+			*Body->Mesh->GetSocketLocation("hand_l").ToCompactString(), *Body->Mesh->GetSocketLocation("hand_r").ToCompactString(), *Body->Mesh->GetSocketLocation("pelvis").ToCompactString());
+	}
 
 	if (bCapture && T < E[Entry].Duration)
 	{
@@ -229,7 +238,7 @@ void AFallAnimGallery::Tick(float Dt)
 	{
 		if (!bCapture) { StartEntry(Entry, Angle); return; }
 		if (Angle < 2) StartEntry(Entry, Angle + 1);
-		else if (Entry + 1 < E.Num()) StartEntry(Entry + 1, 0);
+		else if (Entry + 1 < E.Num() && OnlyEntry < 0) StartEntry(Entry + 1, 0);
 		else FPlatformMisc::RequestExit(false);
 	}
 }

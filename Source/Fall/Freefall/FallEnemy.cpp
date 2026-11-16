@@ -274,6 +274,7 @@ bool AFallEnemy::ReceiveHit(const FVector& PushDirWorld, float Strength, float D
 		return false;
 	}
 	const bool bKilled = Super::ReceiveHit(PushDirWorld, Strength, Damage);
+	Flash(FLinearColor(1.f, 0.95f, 0.9f), 2.f + Strength); // white, so it never merges with the harness colours
 	if (bKilled) Knockout(PushDirWorld);
 	return bKilled;
 }

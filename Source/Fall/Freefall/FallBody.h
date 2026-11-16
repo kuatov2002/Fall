@@ -187,6 +187,7 @@ protected:
 	float PendingRecoil = 0.f;
 	float FlashAmount = 0.f;
 	float LowPulse = 0.f;
+	float LimpSpin = 0.f;
 	FLinearColor FlashColor = FLinearColor::White;
 	TArray<FVector> Trails[4];
 	int32 Seed = 0;

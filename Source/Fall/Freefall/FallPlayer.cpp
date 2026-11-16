@@ -569,15 +569,16 @@ void AFallPlayer::UpdateCamera(float Dt)
 	// Acceleration: when the body speeds up the camera lags above it; braking lets it catch up.
 	const float Acc = (FallSpeed - PrevFallSpeed) / FMath::Max(Dt, 1e-3f);
 	PrevFallSpeed = FallSpeed;
-	CamAccelOffset = FMath::FInterpTo(CamAccelOffset, FMath::Clamp(Acc * 5.f, -40.f, 70.f), Dt, 3.f);
+	CamAccelOffset = FMath::FInterpTo(CamAccelOffset, FMath::Clamp(Acc * 5.f, -60.f, 70.f), Dt, 3.f);
 
 	// Dolly zoom: the FOV widens with speed while the arm shortens, so the body keeps its size on screen
 	// and only the world around it stretches.
 	const float Fov = Camera->FieldOfView;
 	const float Dolly = FMath::Tan(FMath::DegreesToRadians(M->FOV.X * 0.5f)) / FMath::Tan(FMath::DegreesToRadians((Fov - FovKick) * 0.5f));
-	const float DiveBias = M->DivePitchBias * FMath::Max(Dive, 0.f);
+	const float DiveBias = M->DivePitchBias * FMath::Max(Dive, 0.f) - 7.f * FMath::Clamp(1.f - FMath::Abs(Dive) * 2.f, 0.f, 1.f);
 	CameraArm->SetWorldRotation(FRotator(CR.Pitch + DiveBias, CR.Yaw, 0.f) + Shake);
-	CameraArm->TargetArmLength = M->ArmLength * Dolly;
+	ArmPunch = FMath::FInterpTo(ArmPunch, 0.f, Dt, 3.f);
+	CameraArm->TargetArmLength = M->ArmLength * Dolly * (1.f + ArmPunch) * (1.f - 0.15f * FMath::Abs(InputNow.Slide));
 	CameraArm->SocketOffset = M->CameraOffset * FMath::Lerp(1.f, Dolly, 0.5f) + FVector(0.f, 0.f, CamAccelOffset);
 	// Head-down, the body hangs below the pelvis pivot: aim at its middle.
 	CameraArm->TargetOffset = FVector(0.f, 0.f, -45.f * FMath::Max(Dive, 0.f));
@@ -603,8 +604,12 @@ void AFallPlayer::Tick(float DeltaSeconds)
 	if (Pressed(&FFallInputFrame::bMenu) && !BotInput) SFallMenu::Toggle(Cast<APlayerController>(GetController()));
 	GrabCooldown -= DeltaSeconds;
 	// Brake: the body hits the air. Dive: the head drops first.
-	if (InputNow.Dive < -0.5f && InputPrev.Dive >= -0.5f) { AddShake(0.35f); AddImpulse(FVector::UpVector, 1.6f); FovKick = -6.f; }
-	if (InputNow.Dive > 0.5f && InputPrev.Dive <= 0.5f) { AddShake(0.25f); AddImpulse(GetActorForwardVector() * -1.f + FVector(0, 0, -0.5f), 0.8f); FovKick = 7.f; }
+	if (InputNow.Dive < -0.5f && InputPrev.Dive >= -0.5f)
+	{
+		AddShake(0.4f); AddImpulse(FVector::UpVector, 1.8f); FovKick = -7.f; CamAccelOffset = -70.f; ArmPunch = -0.18f;
+		for (TActorIterator<AFallSpeedField> It(GetWorld()); It; ++It) It->Burst(2);
+	}
+	if (InputNow.Dive > 0.5f && InputPrev.Dive <= 0.5f) { AddShake(0.35f); AddImpulse(GetActorForwardVector() * -1.f + FVector(0, 0, -0.5f), 0.8f); FovKick = 8.f; CamAccelOffset = 90.f; ArmPunch = 0.1f; }
 	if (IsHolding())
 	{
 		if (Pressed(&FFallInputFrame::bPush)) PushOff();

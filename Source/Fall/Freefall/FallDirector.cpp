@@ -62,10 +62,9 @@ void AFallDirector::BeginPlay()
 		Canopy->SetMaterial(0, MID);
 	}
 	for (UTextRenderComponent* L : Labels) if (L) L->SetVisibility(false);
-	float Start = 0.f;
-	FParse::Value(FCommandLine::Get(), TEXT("FallStartTime="), Start);
+	FParse::Value(FCommandLine::Get(), TEXT("FallStartTime="), StartTime);
 	bEventsEnabled = !FParse::Param(FCommandLine::Get(), TEXT("FallNoSequence"));
-	JumpTo(Start);
+	// The real start happens on the first tick with a player (the pawn may spawn after the director).
 }
 
 FVector AFallDirector::RelToWorld(const FVector& RelMetres) const
@@ -224,6 +223,7 @@ void AFallDirector::Deploy()
 		P->bCanopy = true;
 		P->AddShake(1.f);
 		P->HitStop(0.06f);
+		P->AddImpulse(P->GetActorForwardVector() + FVector(0, 0, 0.4f), 2.5f); // the opening shock swings the body under the canopy
 	}
 	FallSynth::Play(this, FallSynth::EKind::Canopy, FVector::ZeroVector, 1.f);
 	UFallWorldSubsystem::Get(this)->NoteEvent("CanopyOpen");
@@ -255,6 +255,12 @@ void AFallDirector::Tick(float Dt)
 	AFallPlayer* P = FW ? FW->Player.Get() : nullptr;
 	const UFallSequence* S = Seq();
 	if (!P || !S) return;
+	if (!bStarted)
+	{
+		bStarted = true;
+		JumpTo(StartTime);
+		return;
+	}
 
 	// Impact frame, then straight back to the restart point (well under a second).
 	if (CrashTime >= 0.f)

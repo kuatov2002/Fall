@@ -155,11 +155,11 @@ public:
 
 	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<UInstancedStaticMeshComponent> Streaks;
 
-	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumStreaks = 160;
-	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D StreakRadius = FVector2D(110.f, 1700.f);
+	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumStreaks = 110;
+	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D StreakRadius = FVector2D(90.f, 1100.f);
 	UPROPERTY(EditAnywhere, Category = "Fall") float StreakHalfHeight = 2600.f;
 	/** Streak length = fall speed * this, seconds of motion blur. */
-	UPROPERTY(EditAnywhere, Category = "Fall") float StreakBlur = 0.045f;
+	UPROPERTY(EditAnywhere, Category = "Fall") float StreakBlur = 0.03f;
 	/** Seconds between cloud wisps at density 1. */
 	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D PuffInterval = FVector2D(0.3f, 0.7f);
 	/** Wisp size range, cm. */
@@ -171,6 +171,9 @@ public:
 
 	/** Number of close passes so far (metrics). */
 	int32 NearPasses = 0;
+
+	/** Spawn a few wisps right in front of the camera (air shock on brake). */
+	void Burst(int32 Count);
 
 protected:
 	virtual void BeginPlay() override;
@@ -191,5 +194,7 @@ protected:
 	float NextPuff = 0.f;
 	int32 ClusterId = 0;
 	int32 LastCountedCluster = -1;
+	float SinceClose = 0.f;
+	int32 ForceClose = 0;
 	FRandomStream Rng;
 };

@@ -44,4 +44,5 @@ protected:
 	bool bCapture = false;
 	bool bPrevKeys[5] = {false, false, false, false, false};
 	FVector GrabPoint = FVector::ZeroVector;
+	int32 OnlyEntry = -1;
 };

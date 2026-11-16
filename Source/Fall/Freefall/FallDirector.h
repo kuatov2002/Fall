@@ -77,4 +77,6 @@ protected:
 	float Fade = 0.f;
 	int32 Risers[4] = {INDEX_NONE, INDEX_NONE, INDEX_NONE, INDEX_NONE};
 	bool bEventsEnabled = true;
+	bool bStarted = false;
+	float StartTime = 0.f;
 };

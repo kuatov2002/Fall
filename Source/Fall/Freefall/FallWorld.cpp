@@ -98,7 +98,10 @@ namespace
 
 float AFallPlanet::HeightAt(float Xm, float Ym)
 {
-	const float R = Ridged(Xm, Ym);
+	// Domain warp: bends the ridge lines so the same shapes do not repeat.
+	const float Wx = FMath::PerlinNoise2D(FVector2D(Xm / 6000.f + 3.1f, Ym / 6000.f - 1.7f)) * 2500.f;
+	const float Wy = FMath::PerlinNoise2D(FVector2D(Xm / 6000.f - 5.3f, Ym / 6000.f + 2.9f)) * 2500.f;
+	const float R = Ridged(Xm + Wx, Ym + Wy);
 	const float Mountains = 250.f + 2900.f * FMath::Pow(R, 1.7f);
 	// Landing valley around the origin: low rolling meadow.
 	const float Dist = FMath::Sqrt(Xm * Xm + Ym * Ym);
@@ -315,6 +318,12 @@ void AFallSpeedField::BeginPlay()
 	}
 }
 
+void AFallSpeedField::Burst(int32 Count)
+{
+	for (int32 i = 0; i < Count; ++i) ForceClose = 2;
+	SinceClose = 0.f;
+}
+
 void AFallSpeedField::Tick(float Dt)
 {
 	Super::Tick(Dt);
@@ -340,23 +349,28 @@ void AFallSpeedField::Tick(float Dt)
 			P = FVector(FMath::Cos(A) * R, FMath::Sin(A) * R, -StreakHalfHeight + Rng.FRandRange(0.f, 400.f));
 		}
 		const float Dist = P.Size();
-		const float Thick = 0.012f + Dist * 0.000008f;
+		const float Thick = 0.018f + Dist * 0.00001f;
 		Xf[i] = FTransform(Align, C + P, FVector(Thick, Thick, Len / 100.f));
 	}
 	Streaks->BatchUpdateInstancesTransforms(0, Xf, true, true);
 
 	// Cloud wisps rising past the camera.
 	NextPuff -= Dt * FMath::Max(FW->CloudDensity, 0.f) * FMath::Clamp(FW->PlayerFallSpeed / 5500.f, 0.85f, 1.8f);
-	if (NextPuff <= 0.f)
+	// Never more than ~0.8 s without something passing close: the next cluster is forced close and soon.
+	SinceClose += Dt;
+	if (SinceClose > 0.55f && ForceClose == 0) { ForceClose = 1; NextPuff = FMath::Min(NextPuff, 0.f); }
+	if (NextPuff <= 0.f || ForceClose > 1)
 	{
 		NextPuff = Rng.FRandRange(PuffInterval.X, PuffInterval.Y);
 		// A wisp is a small cluster of sprites; every third one passes right next to the camera.
-		const bool bClose = Rng.FRand() < 0.45f;
+		const bool bClose = ForceClose > 0 || Rng.FRand() < 0.45f;
+		ForceClose = 0;
+		if (bClose) SinceClose = 0.f;
 		const float BaseSize = Rng.FRandRange(PuffSize.X, PuffSize.Y) * (bClose ? 0.5f : 1.f) * FMath::Lerp(1.f, 1.8f, FMath::Clamp(FW->CloudDensity - 1.f, 0.f, 1.f));
 		const float A0 = Rng.FRandRange(0.f, 2.f * PI);
 		const float R0 = bClose ? Rng.FRandRange(220.f, 600.f) : Rng.FRandRange(BaseSize * 0.3f + 400.f, 1600.f);
 		++ClusterId;
-		const float Depth = 9000.f + Rng.FRandRange(0.f, 3000.f);
+		const float Depth = bClose ? FMath::Clamp(FW->PlayerFallSpeed * 0.3f, 1500.f, 3000.f) : 9000.f + Rng.FRandRange(0.f, 3000.f);
 		const FVector Lead = FW->PlayerVelocityH * (Depth / FMath::Max(FW->PlayerFallSpeed, 1000.f)); // meets the player where it will be
 		const FVector Center = C + Lead + FVector(FMath::Cos(A0) * R0, FMath::Sin(A0) * R0, -Depth);
 		const int32 Count = Rng.RandRange(3, 5);

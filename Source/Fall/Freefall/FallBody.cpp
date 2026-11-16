@@ -71,8 +71,8 @@ AFallBody::AFallBody()
 	};
 	const FLinearColor Webbing(0.03f, 0.03f, 0.035f);
 	// Goggle strap tails from the back of the helmet: small accent that whips in the wind.
-	Add("head", FVector(4, -11, 8), FVector(0.2f, -0.5f, -0.85f), FVector(1, 0, 0), 4, 6.f, FVector2D(3.f, 2.f), FLinearColor(0.05f, 0.05f, 0.05f), 60000.f, 0.25f);
-	Add("head", FVector(-4, -11, 8), FVector(-0.2f, -0.5f, -0.85f), FVector(1, 0, 0), 4, 6.f, FVector2D(3.f, 2.f), FLinearColor(0.05f, 0.05f, 0.05f), 60000.f, 0.25f);
+	Add("head", FVector(4, -11, 8), FVector(0.2f, -0.5f, -0.85f), FVector(1, 0, 0), 6, 5.f, FVector2D(3.f, 1.5f), FLinearColor(0.05f, 0.05f, 0.05f), 140000.f, 0.15f);
+	Add("head", FVector(-4, -11, 8), FVector(-0.2f, -0.5f, -0.85f), FVector(1, 0, 0), 6, 5.f, FVector2D(3.f, 1.5f), FLinearColor(0.05f, 0.05f, 0.05f), 140000.f, 0.15f);
 	// Leg strap tails.
 	Add("thigh_l", FVector(5, 9, -12), FVector(0, 0.2f, -1), FVector(1, 0, 0), 4, 7.f, FVector2D(3.5f, 3.f), Webbing, 12000.f);
 	Add("thigh_r", FVector(-5, 9, -12), FVector(0, 0.2f, -1), FVector(1, 0, 0), 4, 7.f, FVector2D(3.5f, 3.f), Webbing, 12000.f);
@@ -80,7 +80,7 @@ AFallBody::AFallBody()
 	Add("spine_04", FVector(6, 15, 0), FVector(0, 0.3f, -1), FVector(1, 0, 0), 3, 6.f, FVector2D(3.f, 2.5f), Webbing, 10000.f);
 	Add("spine_04", FVector(-6, 15, 0), FVector(0, 0.3f, -1), FVector(1, 0, 0), 3, 6.f, FVector2D(3.f, 2.5f), Webbing, 10000.f);
 	// Bridle trailing from the empty harness.
-	Add("spine_03", FVector(0, -16, 4), FVector(0, -0.3f, -1), FVector(1, 0, 0), 6, 10.f, FVector2D(3.f, 3.f), FLinearColor(0.6f, 0.04f, 0.03f), 11000.f, 0.1f);
+	Add("spine_03", FVector(0, -16, 4), FVector(0, -0.3f, -1), FVector(1, 0, 0), 7, 8.f, FVector2D(3.f, 2.f), FLinearColor(0.2f, 0.075f, 0.02f), 80000.f, 0.1f);
 }
 
 void AFallBody::BeginPlay()
@@ -88,7 +88,7 @@ void AFallBody::BeginPlay()
 	if (!AnimData) AnimData = LoadObject<UFallAnimData>(nullptr, TEXT("/Game/Freefall/Data/DA_FallAnim.DA_FallAnim"));
 	Super::BeginPlay();
 	Health = MaxHealth;
-	Seed = FMath::Rand() & 0xffff;
+	Seed = FMath::RandRange(0, 999);
 	Mesh->AddTickPrerequisiteActor(this);
 
 	// Pivot at the pelvis: the body rotates around its centre of mass, not its feet.
@@ -187,6 +187,11 @@ void AFallBody::BuildOutfit()
 		AttachProp(s < 0 ? "thigh_l" : "thigh_r", TEXT("Cylinder"), FVector(0, 0, -8.f), FRotator::ZeroRotator, FVector(19.f, 19.f, 4.f), HarnessColor);
 	}
 	AttachProp("spine_03", TEXT("Cube"), FVector(0, -15.f, 2.f), FRotator::ZeroRotator, FVector(28.f, 5.f, 36.f), HarnessColor * 1.5f, 0.6f, 0.1f);
+	for (int32 s = -1; s <= 1; s += 2)
+	{
+		AttachProp("pelvis", TEXT("Cube"), FVector(s * 9.f, -12.f, -4.f), FRotator(0.f, 0.f, s * 12.f), FVector(4.f, 3.f, 26.f), HarnessColor);
+		AttachProp("pelvis", TEXT("Cube"), FVector(s * 8.f, 11.f, -6.f), FRotator(0.f, 0.f, s * -20.f), FVector(4.f, 3.f, 20.f), HarnessColor);
+	}
 }
 
 void AFallBody::ResetBody()
@@ -307,6 +312,12 @@ void AFallBody::UpdateBody(float Dt)
 		const float T = GetWorld()->GetTimeSeconds();
 		AttGoal = FQuat(FVector::ForwardVector, FMath::DegreesToRadians(7.f * Canopy * FMath::PerlinNoise1D(T * 0.35f + Seed)))
 			* FQuat(FVector::RightVector, FMath::DegreesToRadians(6.f * Canopy * FMath::PerlinNoise1D(T * 0.3f + Seed + 5.f))) * AttGoal;
+	}
+	if (OverridePose == "Limp" && OverrideWeight > 0.5f)
+	{
+		// A limp body tumbles slowly; the limbs trail behind on their soft springs.
+		LimpSpin += Dt * 0.7f;
+		AttGoal = FQuat(FVector(0.3f, 1.f, 0.2f).GetSafeNormal(), LimpSpin) * AttGoal;
 	}
 	SpringQuat(AttGoal, AttQ, AttW, FMath::Lerp(Attitude.X, 0.6f, Canopy), FMath::Lerp(Attitude.Y, 0.2f, Canopy), Dt);
 	AttW = AttW.GetClampedToMaxSize(4.5f); // no 120-degree flips in a few frames

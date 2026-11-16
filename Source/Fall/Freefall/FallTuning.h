@@ -200,7 +200,7 @@ public:
 
 	/** Kick timeline, seconds: chamber (anticipation), strike, recover. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Kick")
-	FVector KickTimes = FVector(0.2f, 0.1f, 0.55f);
+	FVector KickTimes = FVector(0.3f, 0.1f, 0.55f);
 
 	const FFallPose* FindPose(FName Name) const;
 	static const UFallAnimData* Resolve(const UFallAnimData* Maybe) { return Maybe ? Maybe : ::GetDefault<UFallAnimData>(); }
@@ -255,7 +255,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Body")
 	float AttitudeHz = 1.5f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Body")
-	float AttitudeDamping = 0.55f;
+	float AttitudeDamping = 0.65f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
 	float ArmLength = 320.f;

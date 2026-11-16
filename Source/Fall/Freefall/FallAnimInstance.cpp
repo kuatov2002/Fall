@@ -1,6 +1,9 @@
 #include "FallAnimInstance.h"
 #include "Animation/AnimNodeBase.h"
 #include "BoneContainer.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
+#include "HAL/PlatformTime.h"
 
 namespace
 {
@@ -63,7 +66,7 @@ FFallPose FallComputeTargetPose(const UFallAnimData& D, const FFallAnimInput& In
 		const FFallPose Ex = In.bKickRight ? PoseOr(D, "KickExtend").Resolved() : PoseOr(D, "KickExtend").Mirrored();
 		const FVector K = D.KickTimes;
 		const float T = In.KickTime;
-		if (T < K.X) P = FFallPose::Blend(P, Ch, Smooth(T / K.X));
+		if (T < K.X) P = FFallPose::Blend(P, Ch, Smooth(T / (K.X * 0.6f)));
 		else if (T < K.X + K.Y) P = FFallPose::Blend(Ch, Ex, Smooth((T - K.X) / K.Y));
 		else if (T < K.X + K.Y + K.Z) P = FFallPose::Blend(Ex, P, Smooth((T - K.X - K.Y) / K.Z));
 	}
@@ -82,10 +85,10 @@ void FallComputeRefCS(const FReferenceSkeleton& Ref, TArray<FTransform>& OutCS, 
 	}
 	auto Pos = [&](const TCHAR* Name) { const int32 I = Ref.FindBoneIndex(FName(Name)); return I >= 0 ? OutCS[I].GetLocation() : FVector::ZeroVector; };
 	const FVector Up = (Pos(TEXT("head")) - Pos(TEXT("pelvis"))).GetSafeNormal(UE_SMALL_NUMBER, FVector::UpVector);
-	FVector Front = Pos(TEXT("ball_l")) - Pos(TEXT("foot_l"));
-	Front = (Front - Up * (Front | Up)).GetSafeNormal(UE_SMALL_NUMBER, FVector(0, 1, 0));
-	OutBasis[0] = Up ^ Front; // subject's right
-	OutBasis[1] = Front;
+	FVector Right = Pos(TEXT("upperarm_r")) - Pos(TEXT("upperarm_l"));
+	Right = (Right - Up * (Right | Up)).GetSafeNormal(UE_SMALL_NUMBER, FVector(1, 0, 0)); // subject's right
+	OutBasis[0] = Right;
+	OutBasis[1] = Right ^ Up; // front: (right, front, up) with Unreal's cross product
 	OutBasis[2] = Up;
 }
 
@@ -136,9 +139,12 @@ void FFallAnimProxy::Init(const FReferenceSkeleton& Ref)
 	if (Pelvis >= 0) Roles[Pelvis] = ERole::Pelvis;
 	const int32 Head = Find(TEXT("head"));
 	const FVector Up = (Pos(Head) - Pos(Pelvis)).GetSafeNormal(UE_SMALL_NUMBER, FVector::UpVector);
-	FVector Front = (Pos(Find(TEXT("ball_l"))) - Pos(Find(TEXT("foot_l"))));
-	Front = (Front - Up * (Front | Up)).GetSafeNormal(UE_SMALL_NUMBER, FVector(0, 1, 0));
-	const FVector Right = Front ^ Up; // subject's left, see ToCS
+	// Lateral axis from the shoulders: exact, unlike the feet, which splay outwards in the reference pose.
+	FVector Right = Pos(Find(TEXT("upperarm_l"))) - Pos(Find(TEXT("upperarm_r")));
+	Right = (Right - Up * (Right | Up)).GetSafeNormal(UE_SMALL_NUMBER, FVector(1, 0, 0)); // subject's left, see ToCS
+	FVector Front = Up ^ Right;
+	const FVector Feet = (Pos(Find(TEXT("ball_l"))) - Pos(Find(TEXT("foot_l")))) + (Pos(Find(TEXT("ball_r"))) - Pos(Find(TEXT("foot_r"))));
+	if ((Front | Feet) < 0.f) { UE_LOG(LogTemp, Warning, TEXT("FallAnim: unexpected skeleton handedness")); }
 	Basis[kRight] = Right;
 	Basis[kFront] = Front;
 	Basis[kUp] = Up;
@@ -224,7 +230,7 @@ FQuat FFallAnimProxy::Noise(int32 Key, float AmpDeg) const
 	const float W = In.Wind;
 	const float Fd = FMath::Lerp(D->DriftHz.X, D->DriftHz.Y, W);
 	const float Ff = FMath::Lerp(D->FlutterHz.X, D->FlutterHz.Y, W);
-	const float S = (float)(Key * 7.31f + In.Seed * 13.7f);
+	const float S = Key * 7.31f + (In.Seed % 97) * 1.37f;
 	auto Oct = [&](float Off)
 	{
 		return FMath::PerlinNoise1D(Clock * Fd + S + Off) * (1.f - D->FlutterShare)
@@ -238,7 +244,7 @@ FQuat FFallAnimProxy::Flutter(int32 Key, float AmpDeg) const
 {
 	const UFallAnimData* D = DataPtr.Get();
 	const float F = FMath::Lerp(D->FlutterHz.X, D->FlutterHz.Y, In.Wind) * 1.6f;
-	const float S = Key * 3.77f + In.Seed * 5.1f;
+	const float S = Key * 3.77f + (In.Seed % 89) * 2.11f;
 	const FVector RV(FMath::PerlinNoise1D(Clock * F + S), FMath::PerlinNoise1D(Clock * F * 1.13f + S + 41.f), FMath::PerlinNoise1D(Clock * F * 0.91f + S + 83.f));
 	return FQuat::MakeFromRotationVector(RV * FMath::DegreesToRadians(AmpDeg) * 1.6f);
 }
@@ -543,6 +549,21 @@ bool FFallAnimProxy::Evaluate(FPoseContext& Output)
 
 		OutCS[i] = FTransform(Rot, Inherit.GetLocation(), Inherit.GetScale3D());
 		OutLocal[i] = Par >= 0 ? OutCS[i].GetRelativeTransform(OutCS[Par]) : OutCS[i];
+	}
+
+	static double LastLog = 0.0;
+	if (FPlatformTime::Seconds() - LastLog > 1.0 && FParse::Param(FCommandLine::Get(), TEXT("FallAnimDebug")))
+	{
+		LastLog = FPlatformTime::Seconds();
+		for (int32 l = 0; l < 4; ++l)
+		{
+			const FLimbRef& L = Limbs[l];
+			auto B = [&](const FVector& V) { return FVector(V | Basis[kRight], V | Basis[kFront], V | Basis[kUp]); };
+			const FVector UA = (OutCS[L.Lower].GetLocation() - OutCS[L.Upper].GetLocation()).GetSafeNormal();
+			const FVector LA = (OutCS[L.End].GetLocation() - OutCS[L.Lower].GetLocation()).GetSafeNormal();
+			UE_LOG(LogTemp, Display, TEXT("FallAnimDebug limb %d: targetU %s actualU %s | targetL %s actualL %s | hinge %s refHinge %s"), l,
+				*B(L.TU).ToCompactString(), *B(UA).ToCompactString(), *B(L.TL).ToCompactString(), *B(LA).ToCompactString(), *B(L.TH).ToCompactString(), *B(L.Hinge).ToCompactString());
+		}
 	}
 
 	for (FCompactPoseBoneIndex CI : Output.Pose.ForEachBoneIndex())

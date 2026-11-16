@@ -87,9 +87,13 @@ void AFallHUD::DrawHUD()
 	const float Th = 2.5f * S;
 	auto Line = [&](FVector2D A, FVector2D B)
 	{
-		// Dark underlay keeps the crosshair readable against white clouds.
-		DrawLine(A.X, A.Y, B.X, B.Y, FLinearColor(0, 0, 0, 0.45f), Th + 2.5f * S);
-		DrawLine(A.X, A.Y, B.X, B.Y, Col, Th);
+		// Axis-aligned ticks as filled rectangles (crisp at any resolution), on a dark underlay for white clouds.
+		const FVector2D Mn(FMath::Min(A.X, B.X), FMath::Min(A.Y, B.Y)), Mx(FMath::Max(A.X, B.X), FMath::Max(A.Y, B.Y));
+		const bool bH = FMath::Abs(A.X - B.X) > FMath::Abs(A.Y - B.Y);
+		const float W = bH ? Mx.X - Mn.X : Th, H = bH ? Th : Mx.Y - Mn.Y;
+		const float X = bH ? Mn.X : Mn.X - Th * 0.5f, Y = bH ? Mn.Y - Th * 0.5f : Mn.Y;
+		DrawRect(FLinearColor(0, 0, 0, 0.4f), FMath::RoundToFloat(X - 1.f), FMath::RoundToFloat(Y - 1.f), FMath::RoundToFloat(W + 2.f), FMath::RoundToFloat(H + 2.f));
+		DrawRect(Col, FMath::RoundToFloat(X), FMath::RoundToFloat(Y), FMath::RoundToFloat(W), FMath::RoundToFloat(H));
 	};
 	Line(C + FVector2D(Gap, 0), C + FVector2D(Gap + Len, 0));
 	Line(C - FVector2D(Gap, 0), C - FVector2D(Gap + Len, 0));
@@ -101,6 +105,6 @@ void AFallHUD::DrawHUD()
 		const float D = (Gap + 2.f) * 0.8f, E = D + 7.f * S * HitPulse;
 		for (int32 sx = -1; sx <= 1; sx += 2)
 			for (int32 sy = -1; sy <= 1; sy += 2)
-				Line(C + FVector2D(sx * D, sy * D), C + FVector2D(sx * E, sy * E));
+				DrawLine(C.X + sx * D, C.Y + sy * D, C.X + sx * E, C.Y + sy * E, Col, Th);
 	}
 }
