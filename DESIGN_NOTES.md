@@ -134,3 +134,39 @@
 
 ## 10. Меню
 Esc или Start: продолжить, начать отрезок заново, начать падение сначала, управление, выйти. Это единственное место с текстом. На старте игры меню нет: падение начинается сразу с проявления из чёрного.
+
+## 11. Как запускать и проверять
+
+**Игра.** `Build/Package/Windows/Fall.exe` или Play в редакторе на карте `Freefall`. Галерея анимаций: карта `AnimGallery`.
+
+**Ключи запуска** (работают и в сборке, и с `UnrealEditor.exe Fall.uproject -game`):
+| Ключ | Что делает |
+|---|---|
+| `-FallStartTime=118` | начать падение с этого времени (сегменты, погоня, финал) |
+| `-FallGiveParachute` | парашют уже на спине |
+| `-FallNoSequence` | без событий постановки: чистое падение для проверки движения |
+| `-FallReview=M1/run01 -FallBot=core -FallShot=0.333 -FallDuration=40 -FallBursts` | бот, кадры каждые 1/3 с, серии на переходах, метрики в `Saved/Review/M1/run01/metrics.json` |
+| `-FallBot=full` | бот на всё падение: целится, стреляет, пинает, хватается за обломки при угрозе, гонится за носителем |
+| `-FallGallery=M1/gallery` (карта AnimGallery) | покадровая запись всех состояний с трёх камер |
+| `-FallGalleryOnly=2 -FallAnimDebug` | одно состояние галереи и лог направлений костей |
+
+**Скрипты** (`Tools/`):
+- `run_review.sh <карта> <папка> <ключи>` — прогон с фиксированным шагом 30 кадров в секунду; `PERF=1` — в реальном времени для замера FPS.
+- `stage_runs.sh <метка>` — полный пакет: всё падение, погоня, финал, галерея.
+- `contact_sheet.py sheet|gallery` — контактные листы и ленты.
+- `make_materials.py`, `make_data.py` — материалы и Data Assets (через `run_python.sh`).
+
+**Упаковка:**
+```
+RunUAT.bat BuildCookRun -project=Fall.uproject -noP4 -platform=Win64 -clientconfig=Development -build -cook -stage -pak -archive -archivedirectory=Build/Package -unattended
+```
+
+## 12. Где настраивать без кода
+| Что | Ассет |
+|---|---|
+| Весь таймлайн падения, кривая высоты, высота раскрытия | `Content/Freefall/Data/DA_FallSequence` (кнопка `ResetToShippedDesign` возвращает поставленную версию) |
+| Скорости, разгон, торможение, камера, FOV, тряска, захват, отталкивание | `DA_FallMovement` |
+| Позы, пружины, шум, взгляд, удар по телу, тайминг пинка | `DA_FallAnim` |
+| Оружие и пинок | `DA_FallWeapon` |
+| Каждый тип врага | `DA_Enemy_Shooter / Wingsuiter / Heavy / Target` (кнопка `ResetToTypeDefaults`) |
+| Превью постановки | актор `FallDirector` в карте `Freefall`: `PreviewTime`, `PreviewWindow`, `bPreview` |
