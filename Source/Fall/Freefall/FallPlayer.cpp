@@ -28,7 +28,8 @@ AFallPlayer::AFallPlayer()
 	CameraArm->SetupAttachment(RootComponent);
 	CameraArm->SetUsingAbsoluteRotation(true);
 	CameraArm->bUsePawnControlRotation = false;
-	CameraArm->bDoCollisionTest = false;
+	CameraArm->bDoCollisionTest = true; // only debris blocks the camera channel
+	CameraArm->ProbeSize = 14.f;
 	CameraArm->bEnableCameraLag = true;
 	CameraArm->CameraLagSpeed = 18.f;
 	CameraArm->CameraLagMaxDistance = 70.f;

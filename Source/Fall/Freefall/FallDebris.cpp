@@ -27,7 +27,7 @@ AFallDebris::AFallDebris()
 	Box->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	Box->SetCollisionResponseToAllChannels(ECR_Ignore);
 	Box->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
-	Box->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+	Box->SetCollisionResponseToChannel(ECC_Camera, ECR_Block); // the camera never ends up inside a piece
 	RootComponent = Box;
 	Mover = CreateDefaultSubobject<UFallMoverComponent>(TEXT("Mover"));
 }
