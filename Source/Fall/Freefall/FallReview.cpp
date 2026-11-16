@@ -325,6 +325,14 @@ void AFallReview::Tick(float DeltaSeconds)
 	}
 
 	if (T >= NextPrimScan) { NextPrimScan = T + 1.f; ScanPrimitives(); }
+	if (P)
+	{
+		FString Pair;
+		const float Pen = P->MeasureSelfIntersection(&Pair);
+		++SelfIntFrames;
+		if (Pen > 1.f) ++SelfIntBad;
+		if (Pen > SelfIntWorst) { SelfIntWorst = Pen; SelfIntPair = FString::Printf(TEXT("%s at %.1f s"), *Pair, T); }
+	}
 	if (Bot == TEXT("damage")) TickDamageTest(DeltaSeconds);
 	if (Bot == TEXT("grab")) TickGrabTest(DeltaSeconds);
 	T += DeltaSeconds;
@@ -350,6 +358,10 @@ void AFallReview::WriteMetrics()
 		for (const TPair<FString, int32>& Pr : Primitives) PO->SetNumberField(Pr.Key, Pr.Value);
 		Root->SetObjectField(TEXT("engine_primitives"), PO);
 		Root->SetNumberField(TEXT("engine_primitive_kinds"), Primitives.Num());
+		Root->SetNumberField(TEXT("self_intersection_frames"), SelfIntFrames);
+		Root->SetNumberField(TEXT("self_intersection_bad_frames"), SelfIntBad);
+		Root->SetNumberField(TEXT("self_intersection_worst_cm"), SelfIntWorst);
+		Root->SetStringField(TEXT("self_intersection_worst"), SelfIntPair);
 	}
 	Root->SetNumberField(TEXT("deaths"), Deaths);
 	if (Bot == TEXT("damage") || Bot == TEXT("grab"))

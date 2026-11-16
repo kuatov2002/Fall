@@ -1,4 +1,6 @@
 #include "FallAudio.h"
+#include "FallArt.h"
+#include "Kismet/GameplayStatics.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundAttenuation.h"
 #include "Engine/World.h"
@@ -209,6 +211,17 @@ void FallSynth::Play(UObject* WorldContext, EKind Kind, const FVector& Location,
 {
 	UWorld* World = WorldContext ? WorldContext->GetWorld() : nullptr;
 	if (!World || World->GetNetMode() == NM_DedicatedServer) return;
+
+	static const TCHAR* Names[] = {TEXT("Gunshot"), TEXT("EnemyShot"), TEXT("HitBody"), TEXT("HitMetal"), TEXT("Kick"), TEXT("Whoosh"), TEXT("Whistle"), TEXT("Charge"), TEXT("Explosion"), TEXT("Canopy"), TEXT("Grab"), TEXT("Ricochet")};
+	if (const TSoftObjectPtr<USoundBase>* Rec = UFallArtData::Get()->Sounds.Find(Names[(int32)Kind]))
+	{
+		if (USoundBase* S = Rec->LoadSynchronous())
+		{
+			if (Location.IsZero()) UGameplayStatics::PlaySound2D(World, S, Volume, Pitch);
+			else UGameplayStatics::PlaySoundAtLocation(World, S, Location, Volume, Pitch);
+			return;
+		}
+	}
 
 	static TMap<int32, TArray<int16>> Cache;
 	static int32 Take = 0;

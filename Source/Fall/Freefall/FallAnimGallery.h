@@ -45,4 +45,9 @@ protected:
 	bool bPrevKeys[5] = {false, false, false, false, false};
 	FVector GrabPoint = FVector::ZeroVector;
 	int32 OnlyEntry = -1;
+	bool bCloseup = false;
+	FVector HandFocus = FVector::ZeroVector;
+	struct FIntersect { int32 Frames = 0, Bad = 0; float Worst = 0.f; float WorstT = 0.f; FString Pair; };
+	TMap<FString, FIntersect> Intersections;
+	void WriteIntersections();
 };

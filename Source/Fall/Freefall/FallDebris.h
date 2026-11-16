@@ -18,7 +18,17 @@ enum class EFallDebrisType : uint8
 	Crate,    // cargo box, hits hard, too small to hold
 	Engine,   // burning engine pod with a propeller, grabbable
 	Section,  // big hull section, grabbable, carries the turret
-	Shards,   // small fragments, near misses
+	Shards,   // small trash: lamps, cans, pipes, extinguishers
+	Barrel,   // drums and gas bottles
+	Rack,     // shelving, desks, cabinets
+	Ductwork, // ducts and pipe runs, grabbable
+	Searchlight,
+	Lifeboat, // grabbable by the gunwale
+	Stairs,   // grabbable stair flights
+	Tarp,     // tarp-covered cargo frame, grabbable by the straps
+	Crane,    // deck crane or gantry frame, grabbable
+	FrameRing,// airship frame ring, 18-25 m: fly through it
+	Propeller,// spinning airship propeller
 };
 
 /** A wave of debris. Used by the fall sequence; one wave spawns one type. */
@@ -73,6 +83,11 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Debris") EFallDebrisType Type = EFallDebrisType::Plate;
 	UPROPERTY(BlueprintReadOnly, Category = "Debris") bool bGrabbable = true;
 	UPROPERTY(BlueprintReadOnly, Category = "Debris") bool bBurning = false;
+	/** Open frame: no cover, no contact, no grab (fly through). */
+	UPROPERTY(BlueprintReadOnly, Category = "Debris") bool bHollow = false;
+
+	/** Build from an explicit mesh (airship chunks). Pivot at the mesh's bounds centre. */
+	void BuildFromMesh(UStaticMesh* InMesh, float Scale, bool bInGrabbable, float InMass, bool bInHollow, bool bInSpins, bool bInBurning);
 
 	/** Build the visual and collision for a type. */
 	void Build(EFallDebrisType InType, float Scale, bool bInBurning, int32 Seed);
@@ -90,6 +105,8 @@ public:
 
 	/** Seconds since a body last touched it (no repeated hits). */
 	float LastHit = -10.f;
+	/** A fast hit by a grabbable piece waits a moment: a grab press right now still saves the player. */
+	float PendingHit = -10.f;
 
 	virtual void Tick(float DeltaSeconds) override;
 
@@ -97,6 +114,8 @@ protected:
 	UStaticMeshComponent* AddPart(UStaticMesh* Mesh, const FVector& Loc, const FRotator& Rot, const FVector& Scale, const FLinearColor& Color, float Metal = 0.4f, float Rough = 0.6f);
 	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Parts;
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> Propeller;
+	UPROPERTY() TObjectPtr<class UNiagaraComponent> FireFX;
+	FVector SpinAxis = FVector(0, 1, 0);
 	float SmokeTimer = 0.f;
 	float Age = 0.f;
 };
@@ -117,6 +136,8 @@ public:
 	void ClearWaves() { Waves.Reset(); }
 	/** Spawns one piece at a position relative to the player with a relative velocity (m/s). */
 	AFallDebris* SpawnPiece(EFallDebrisType Type, const FVector& RelPos, const FVector& RelVelMS, float Scale = 1.f, bool bBurning = false);
+	/** Spawns a piece from an explicit mesh at a world transform (airship chunks). */
+	AFallDebris* SpawnMeshPiece(UStaticMesh* Mesh, const FTransform& World, const FVector& RelVelMS, float Scale, bool bGrabbable, float Mass, bool bHollow, bool bSpins, bool bBurning);
 	void DestroyAll();
 
 	/** Vertical distance at which pieces appear, cm. */

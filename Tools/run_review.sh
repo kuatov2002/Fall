@@ -8,4 +8,4 @@ MAP="$1"; shift
 DIR="$1"; shift
 rm -rf "Saved/Review/$DIR"
 if [ -n "$PERF" ]; then STEP="-FallPerf"; else STEP="-benchmark -fps=30"; fi
-"$UE" "C:/Users/chann/Fall/Fall.uproject" "$MAP" -game -windowed -ResX=${RESX:-1280} -ResY=${RESY:-720} $STEP -nosound -unattended -nosplash -FallReview="$DIR" "$@" -log -abslog="C:/Users/chann/Fall/Saved/Logs/review.log"
+"$UE" "C:/Users/chann/Fall/Fall.uproject" "$MAP" -game -windowed -ResX=${RESX:-1280} -ResY=${RESY:-720} $STEP -nosound -unattended -nosplash -FallReview="$DIR" -ModelContextProtocolPort=8099 "$@" -log -abslog="C:/Users/chann/Fall/Saved/Logs/review.log"

@@ -78,5 +78,8 @@ protected:
 
 	// Primitive check: engine utility meshes visible in the game frame (owner class -> mesh path -> max count).
 	TMap<FString, int32> Primitives;
+	int32 SelfIntFrames = 0, SelfIntBad = 0;
+	float SelfIntWorst = 0.f;
+	FString SelfIntPair;
 	float NextPrimScan = 0.f;
 };

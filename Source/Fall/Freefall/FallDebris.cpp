@@ -9,6 +9,10 @@
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "EngineUtils.h"
+#include "FallArt.h"
+#include "NiagaraComponent.h"
+#include "NiagaraFunctionLibrary.h"
+#include "NiagaraSystem.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 
@@ -57,11 +61,55 @@ UStaticMeshComponent* AFallDebris::AddPart(UStaticMesh* Mesh, const FVector& Loc
 	return C;
 }
 
+void AFallDebris::BuildFromMesh(UStaticMesh* InMesh, float S, bool bInGrabbable, float InMass, bool bInHollow, bool bInSpins, bool bInBurning)
+{
+	bGrabbable = bInGrabbable && !bInHollow;
+	bHollow = bInHollow;
+	bBurning = bInBurning;
+	Mass = InMass;
+	const FBox B = InMesh->GetBoundingBox();
+	const FVector Ext = (B.GetExtent() * S).ComponentMax(FVector(8.f));
+	UStaticMeshComponent* C = NewObject<UStaticMeshComponent>(this);
+	C->SetStaticMesh(InMesh);
+	C->SetupAttachment(RootComponent);
+	C->SetRelativeScale3D(FVector(S));
+	C->SetRelativeLocation(-B.GetCenter() * S);
+	C->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	C->SetCastShadow(Ext.GetMax() > 60.f);
+	C->RegisterComponent();
+	Parts.Add(C);
+	if (bInSpins)
+	{
+		// Spin about the thinnest axis of the mesh, through its centre.
+		Propeller = C;
+		const FVector E = B.GetExtent();
+		SpinAxis = E.X <= E.Y && E.X <= E.Z ? FVector(1, 0, 0) : (E.Y <= E.Z ? FVector(0, 1, 0) : FVector(0, 0, 1));
+	}
+	Box->SetBoxExtent(Ext);
+	if (bHollow) Box->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	if (bBurning)
+	{
+		const UFallArtData* Art = UFallArtData::Get();
+		if (UNiagaraSystem* Sys = (Ext.GetMax() > 400.f ? Art->FireLarge : Art->Fire).LoadSynchronous())
+		{
+			FireFX = UNiagaraFunctionLibrary::SpawnSystemAttached(Sys, Box, NAME_None, FVector(0.f, 0.f, Ext.Z * 0.3f), FRotator::ZeroRotator, FVector(FMath::Clamp(Ext.GetMax() / 150.f, 0.6f, 4.f)), EAttachLocation::KeepRelativeOffset, false, ENCPoolMethod::None);
+		}
+	}
+}
+
 void AFallDebris::Build(EFallDebrisType InType, float S, bool bInBurning, int32 Seed)
 {
 	Type = InType;
 	bBurning = bInBurning;
 	FRandomStream R(Seed);
+	if (const FFallDebrisArt* A = UFallArtData::Get()->FindDebris(InType))
+	{
+		if (UStaticMesh* M = A->Meshes[R.RandHelper(A->Meshes.Num())].LoadSynchronous())
+		{
+			BuildFromMesh(M, S * A->Scale, A->bGrabbable, A->Mass, A->bHollow, A->bSpins, bInBurning);
+			return;
+		}
+	}
 	UStaticMesh* Cube = Shape(TEXT("Cube"));
 	UStaticMesh* Cyl = Shape(TEXT("Cylinder"));
 	auto Jit = [&R](float A) { return FRotator(R.FRandRange(-A, A), R.FRandRange(-A, A), R.FRandRange(-A, A)); };
@@ -129,6 +177,12 @@ void AFallDebris::Build(EFallDebrisType InType, float S, bool bInBurning, int32 
 		Mass = 6.f;
 		break;
 	}
+	default:
+	{
+		Ext = FVector(60.f) * S;
+		AddPart(Cube, FVector::ZeroVector, Jit(10.f), Ext / 50.f, Rust, 0.5f, 0.6f);
+		break;
+	}
 	case EFallDebrisType::Shards:
 	{
 		Ext = FVector(35.f, 22.f, 8.f) * S;
@@ -171,6 +225,7 @@ FVector AFallDebris::ClosestSurfacePoint(const FVector& P, FVector* OutNormal) c
 
 float AFallDebris::DistanceTo(const FVector& P) const
 {
+	if (bHollow) return 1e7f;
 	const FTransform T = Box->GetComponentTransform();
 	const FVector E = Box->GetUnscaledBoxExtent();
 	const FVector L = T.InverseTransformPositionNoScale(P);
@@ -182,7 +237,11 @@ void AFallDebris::Tick(float Dt)
 {
 	Super::Tick(Dt);
 	Age += Dt;
-	if (Propeller) Propeller->AddLocalRotation(FRotator(0.f, Dt * 420.f, 0.f));
+	if (Propeller)
+	{
+		if (bHollow || !Parts.Num() || Parts[0] == Propeller) Propeller->AddLocalRotation(FQuat(SpinAxis, FMath::DegreesToRadians(Dt * 240.f)));
+		else Propeller->AddLocalRotation(FRotator(0.f, Dt * 420.f, 0.f));
+	}
 	if (Holder.IsValid())
 	{
 		Mover->Spin = FMath::RInterpTo(Mover->Spin, FRotator::ZeroRotator, Dt, 3.f);
@@ -260,6 +319,24 @@ AFallDebris* AFallDebrisSpawner::SpawnPiece(EFallDebrisType Type, const FVector&
 	return D;
 }
 
+AFallDebris* AFallDebrisSpawner::SpawnMeshPiece(UStaticMesh* Mesh, const FTransform& World, const FVector& RelVelMS, float S, bool bGrab, float InMass, bool bHollow, bool bSpins, bool bBurning)
+{
+	if (!Mesh) return nullptr;
+	UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this);
+	FActorSpawnParameters P;
+	P.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	AFallDebris* D = GetWorld()->SpawnActor<AFallDebris>(AFallDebris::StaticClass(), FTransform(World.GetRotation(), World.GetLocation()), P);
+	if (!D) return nullptr;
+	D->Type = EFallDebrisType::Section;
+	D->BuildFromMesh(Mesh, S, bGrab, InMass, bHollow, bSpins, bBurning);
+	const float PlayerFall = FW ? FW->PlayerFallSpeed : 5500.f;
+	D->Mover->FallSpeed = PlayerFall - RelVelMS.Z * 100.f;
+	D->Mover->VelocityH = FVector(RelVelMS.X, RelVelMS.Y, 0.f) * 100.f;
+	D->Mover->Spin = FRotator(Rng.FRandRange(-6.f, 6.f), Rng.FRandRange(-6.f, 6.f), Rng.FRandRange(-6.f, 6.f));
+	D->Mover->KillDistance = SpawnDepth * 1.3f;
+	return D;
+}
+
 void AFallDebrisSpawner::Tick(float Dt)
 {
 	Super::Tick(Dt);
@@ -325,7 +402,7 @@ void AFallDebrisSpawner::Tick(float Dt)
 				}
 			}
 		}
-		if (Now - D->LastHit < 0.6f) continue;
+		if (D->bHollow || Now - D->LastHit < 0.6f) continue;
 		for (TActorIterator<AFallBody> B(GetWorld()); B; ++B)
 		{
 			if (D->Holder.Get() == *B || B->IsDead()) continue;
@@ -348,6 +425,12 @@ void AFallDebrisSpawner::Tick(float Dt)
 				else if (!PL->IsHolding()) { PM->AddHorizontalImpulse(FVector(Push.X, Push.Y, 0.f).GetSafeNormal() * 250.f); PM->AddShake(0.12f); }
 				D->LastHit = Now;
 				continue;
+			}
+			if (PL && D->bGrabbable)
+			{
+				if (Now - D->PendingHit > 1.f) { D->PendingHit = Now; continue; }
+				if (Now - D->PendingHit < 0.15f) continue;
+				D->PendingHit = -10.f;
 			}
 			const bool bHeldPlatform = D->Holder.IsValid();
 			B->ReceiveHit(Push + RelV.GetSafeNormal() * 0.5f, Strength, bHeldPlatform ? 0.f : 6.f + 7.f * Strength);

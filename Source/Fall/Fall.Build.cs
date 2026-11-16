@@ -20,7 +20,7 @@ public class Fall : ModuleRules
 			"UMG",
 			"Slate",
 			"SlateCore",
-			"ProceduralMeshComponent",
+			"ProceduralMeshComponent", "Niagara",
 			"Json",
 			"AudioExtensions"
 		});

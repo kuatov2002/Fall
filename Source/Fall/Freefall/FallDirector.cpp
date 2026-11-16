@@ -1,4 +1,5 @@
 #include "FallDirector.h"
+#include "FallArt.h"
 #include "FallPlayer.h"
 #include "FallWorld.h"
 #include "FallEnemy.h"
@@ -32,8 +33,7 @@ AFallDirector::AFallDirector()
 	Canopy->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Canopy->SetVisibility(false);
 	// Ram-air canopy: a long rectangular wing.
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
-	if (Cube.Succeeded()) Canopy->SetStaticMesh(Cube.Object);
+
 }
 
 AFallDirector* AFallDirector::Get(const UObject* WorldContext)
@@ -57,13 +57,7 @@ void AFallDirector::BeginPlay()
 	{
 		FallbackSequence = NewObject<UFallSequence>(this);
 	}
-	if (UMaterialInterface* M = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_LitTwoSided.M_FF_LitTwoSided")))
-	{
-		UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(M, this);
-		MID->SetVectorParameterValue("Color", FLinearColor(1.f, 0.4f, 0.04f));
-		MID->SetVectorParameterValue("Emissive", FLinearColor(0.35f, 0.1f, 0.01f)); // light through the fabric
-		Canopy->SetMaterial(0, MID);
-	}
+	Canopy->SetStaticMesh(UFallArtData::Get()->Canopy.LoadSynchronous());
 	for (UTextRenderComponent* L : Labels) if (L) L->SetVisibility(false);
 	FParse::Value(FCommandLine::Get(), TEXT("FallStartTime="), StartTime);
 	bEventsEnabled = !FParse::Param(FCommandLine::Get(), TEXT("FallNoSequence"));
@@ -336,7 +330,7 @@ void AFallDirector::Tick(float Dt)
 		const FVector Top = P->GetActorLocation() + FVector(0.f, 0.f, 750.f);
 		Canopy->SetWorldLocation(Top);
 		Canopy->SetWorldRotation(FRotator(0.f, P->GetActorRotation().Yaw, 0.f));
-		Canopy->SetWorldScale3D(FVector(2.8f * FMath::Max(Inf, 0.3f) * Over, 8.5f * Inf * Over, 0.45f));
+		Canopy->SetWorldScale3D(FVector(FMath::Max(Inf, 0.3f) * Over, FMath::Max(Inf, 0.05f) * Over, FMath::Lerp(2.5f, 1.f, Inf)));
 		if (AFallFX* FX = AFallFX::Get(this))
 		{
 			int32* Lines = Risers;

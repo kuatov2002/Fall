@@ -64,6 +64,7 @@ public:
 	bool IsTelegraphing() const { return State == EFallEnemyState::Telegraph; }
 
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> Pack;
+	virtual UMaterialInterface* RoleMaterial() const override;
 
 	/** At most this many attack warnings at the same time (readability). */
 	static int32 ActiveTelegraphs;

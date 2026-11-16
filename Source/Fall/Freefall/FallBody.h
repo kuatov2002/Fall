@@ -105,6 +105,25 @@ public:
 
 	/** Attach a basic-shape prop to a bone. Offset and rotation are in body space of the reference pose (X right, Y front, Z up). */
 	UStaticMeshComponent* AttachProp(FName Bone, const TCHAR* Shape, const FVector& Offset, const FRotator& BodyRot, const FVector& Size, const FLinearColor& Color, float Roughness = 0.7f, float Metallic = 0.f);
+	/** Attaches a mesh to a bone, offset and rotated in body space (X right, Y front, Z up), keeping its own materials. */
+	UStaticMeshComponent* AttachMesh(FName Bone, UStaticMesh* InMesh, const FVector& Offset, const FRotator& BodyRot, float Scale = 1.f);
+
+	/** Pistol in the right hand, null when unarmed. */
+	UPROPERTY() TObjectPtr<UStaticMeshComponent> WeaponMesh;
+	/** Fresh magazine in the left hand during a reload. */
+	UPROPERTY() TObjectPtr<UStaticMeshComponent> SpareMag;
+	/** Left hand to the belt pouch, magazine into the grip, back. */
+	void StartReloadMotion(float Duration);
+	bool IsReloading() const { return ReloadT >= 0.f; }
+	FVector MuzzleLocation() const;
+	FVector MuzzleForward() const;
+	/** Deepest penetration (cm) of a hand, finger or forearm into the head, neck or torso this frame; names the pair. */
+	float MeasureSelfIntersection(FString* OutWorst = nullptr) const;
+	/** Puts the pistol in the right hand, grip in the palm, barrel continuing the forearm. */
+	void ArmWeapon();
+
+	/** 0..1 index finger on the trigger, decays by itself. */
+	float TriggerPull = 0.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fall")
 	float MaxHealth = 100.f;
@@ -178,6 +197,13 @@ protected:
 
 	/** Builds the helmet and harness. Override to change the outfit. */
 	virtual void BuildOutfit();
+	/** Character material for this body's role. */
+	virtual UMaterialInterface* RoleMaterial() const;
+	/** Support hand while aiming, reload path. Runs before the hand targets are handed to the animation. */
+	void UpdateWeaponHands(float Dt);
+	float ReloadT = -1.f, ReloadDur = 1.f;
+	FVector ReloadStartL = FVector::ZeroVector;
+	bool bWeaponHand[2] = {false, false};
 
 	FQuat AttQ = FQuat::Identity;
 	FVector AttW = FVector::ZeroVector;

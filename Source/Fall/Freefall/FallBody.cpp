@@ -1,5 +1,6 @@
 #include "FallBody.h"
 #include "FallStraps.h"
+#include "FallArt.h"
 #include "Components/SphereComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
@@ -89,6 +90,11 @@ AFallBody::AFallBody()
 void AFallBody::BeginPlay()
 {
 	if (!AnimData) AnimData = LoadObject<UFallAnimData>(nullptr, TEXT("/Game/Freefall/Data/DA_FallAnim.DA_FallAnim"));
+	if (USkeletalMesh* Char = UFallArtData::Get()->CharacterMesh.LoadSynchronous())
+	{
+		Mesh->SetSkeletalMeshAsset(Char);
+		Mesh->SetAnimInstanceClass(UFallAnimInstance::StaticClass());
+	}
 	Super::BeginPlay();
 	Health = MaxHealth;
 	Seed = FMath::RandRange(0, 999);
@@ -111,17 +117,10 @@ void AFallBody::BeginPlay()
 		AI->AnimData = AnimData;
 	}
 
-	// Jumpsuit: replace the mannequin plastic with a matte fabric colour per slot.
-	if (UMaterialInterface* Lit = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Lit.M_FF_Lit")))
+	// Flight suit and gear per role.
+	if (UMaterialInterface* RM = RoleMaterial())
 	{
-		for (int32 m = 0; m < Mesh->GetNumMaterials(); ++m)
-		{
-			UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(Lit, this);
-			MID->SetVectorParameterValue("Color", m == 0 ? SuitColor : SuitColor * 1.35f);
-			MID->SetScalarParameterValue("Roughness", 0.8f);
-			MID->SetScalarParameterValue("Metallic", 0.f);
-			Mesh->SetMaterial(m, MID);
-		}
+		for (int32 m = 0; m < Mesh->GetNumMaterials(); ++m) Mesh->SetMaterial(m, RM);
 	}
 	if (UMaterialInterface* Add = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Additive.M_FF_Additive")))
 	{
@@ -178,22 +177,183 @@ UStaticMeshComponent* AFallBody::AttachProp(FName Bone, const TCHAR* Shape, cons
 
 void AFallBody::BuildOutfit()
 {
-	// Helmet with goggles, harness: chest strap, shoulder straps, leg loops, an empty container frame on the back.
-	AttachProp("head", TEXT("Sphere"), FVector(0, -1.5f, 9.5f), FRotator::ZeroRotator, FVector(23.f, 26.f, 23.f), HarnessColor * 2.f, 0.35f, 0.2f);
-	AttachProp("head", TEXT("Cube"), FVector(0, 9.5f, 6.f), FRotator::ZeroRotator, FVector(17.f, 4.f, 5.f), FLinearColor(0.03f, 0.04f, 0.05f), 0.08f, 0.9f);
-	AttachProp("head", TEXT("Cube"), FVector(0, -1.5f, 21.f), FRotator::ZeroRotator, FVector(5.f, 22.f, 2.f), AccentColor, 0.5f, 0.f);
-	AttachProp("spine_04", TEXT("Cube"), FVector(0, 14.f, 2.f), FRotator::ZeroRotator, FVector(30.f, 3.f, 4.f), HarnessColor);
-	for (int32 s = -1; s <= 1; s += 2)
+	// The flight suit, helmet and chest rig are part of the character model; the gear here is what the story needs.
+}
+
+UMaterialInterface* AFallBody::RoleMaterial() const
+{
+	return UFallArtData::Get()->PlayerMaterial.LoadSynchronous();
+}
+
+UStaticMeshComponent* AFallBody::AttachMesh(FName Bone, UStaticMesh* InMesh, const FVector& Offset, const FRotator& BodyRot, float Scale)
+{
+	USkeletalMesh* SK = Mesh->GetSkeletalMeshAsset();
+	if (!SK || !InMesh) return nullptr;
+	const int32 B = SK->GetRefSkeleton().FindBoneIndex(Bone);
+	if (B < 0) return nullptr;
+	TArray<FTransform> RefCS;
+	FVector Basis[3];
+	FallComputeRefCS(SK->GetRefSkeleton(), RefCS, Basis);
+	const FTransform& T = RefCS[B];
+	const FVector OffCS = Basis[0] * Offset.X + Basis[1] * Offset.Y + Basis[2] * Offset.Z;
+	const FQuat BodyFrame = FRotationMatrix::MakeFromXY(Basis[0], Basis[1]).ToQuat();
+	UStaticMeshComponent* C = NewObject<UStaticMeshComponent>(this);
+	C->SetStaticMesh(InMesh);
+	C->SetupAttachment(Mesh, Bone);
+	C->SetRelativeLocation(T.InverseTransformPosition(T.GetLocation() + OffCS));
+	C->SetRelativeRotation(T.GetRotation().Inverse() * BodyFrame * BodyRot.Quaternion());
+	C->SetRelativeScale3D(FVector(Scale));
+	C->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	C->RegisterComponent();
+	Props.Add(C);
+	return C;
+}
+
+void AFallBody::ArmWeapon()
+{
+	const UFallArtData* Art = UFallArtData::Get();
+	USkeletalMesh* SK = Mesh->GetSkeletalMeshAsset();
+	UStaticMesh* Gun = Art->Pistol.LoadSynchronous();
+	if (!SK || !Gun) return;
+	const FReferenceSkeleton& Ref = SK->GetRefSkeleton();
+	TArray<FTransform> RefCS;
+	FVector Basis[3];
+	FallComputeRefCS(Ref, RefCS, Basis);
+	auto Pos = [&](const TCHAR* Name) { const int32 i = Ref.FindBoneIndex(Name); return i >= 0 ? RefCS[i].GetLocation() : FVector::ZeroVector; };
+	const int32 HandIdx = Ref.FindBoneIndex("hand_r");
+	if (HandIdx < 0) return;
+	const FVector H = Pos(TEXT("hand_r")), LA = Pos(TEXT("lowerarm_r")), Mid = Pos(TEXT("middle_01_r")), Idx = Pos(TEXT("index_01_r")), Pnk = Pos(TEXT("pinky_01_r"));
+	// A real grip: the barrel continues the forearm (wrist straight), the slide sits on the thumb side,
+	// the grip lies across the palm under the knuckles.
+	const FVector Fwd = ((H - LA).GetSafeNormal() * 0.6f + (Mid - H).GetSafeNormal() * 0.4f).GetSafeNormal();
+	const FVector Across = (Idx - Pnk).GetSafeNormal();
+	const FVector Up = (Across - Fwd * (Across | Fwd)).GetSafeNormal();
+	const FVector Palm = ((Mid - H).GetSafeNormal() ^ Across).GetSafeNormal();
+	const FVector GripCS = H + (Mid - H) * 0.55f + Palm * 2.5f;
+	const FVector GunX = Art->PistolForward.X < 0.f ? -Fwd : Fwd;
+	const FQuat Rot = FRotationMatrix::MakeFromXZ(GunX, Up).ToQuat();
+	const FTransform GunCS(Rot, GripCS - Rot.RotateVector(Art->PistolGrip));
+	const FTransform Rel = GunCS.GetRelativeTransform(RefCS[HandIdx]);
+	WeaponMesh = NewObject<UStaticMeshComponent>(this, TEXT("WeaponMesh"));
+	WeaponMesh->SetStaticMesh(Gun);
+	WeaponMesh->SetupAttachment(Mesh, "hand_r");
+	WeaponMesh->SetRelativeTransform(Rel);
+	WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	WeaponMesh->RegisterComponent();
+	Props.Add(WeaponMesh);
+	if (UStaticMesh* Mag = Art->Magazine.LoadSynchronous())
 	{
-		AttachProp("spine_05", TEXT("Cube"), FVector(s * 9.f, 0.f, 9.f), FRotator(0.f, 0.f, 0.f), FVector(4.f, 30.f, 3.f), HarnessColor);
-		AttachProp(s < 0 ? "thigh_l" : "thigh_r", TEXT("Cylinder"), FVector(0, 0, -8.f), FRotator::ZeroRotator, FVector(19.f, 19.f, 4.f), HarnessColor);
+		SpareMag = NewObject<UStaticMeshComponent>(this, TEXT("SpareMag"));
+		SpareMag->SetStaticMesh(Mag);
+		SpareMag->SetupAttachment(Mesh, "hand_l");
+		SpareMag->SetRelativeLocation(FVector(8.f, 3.f, 0.f));
+		SpareMag->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		SpareMag->SetVisibility(false);
+		SpareMag->RegisterComponent();
+		Props.Add(SpareMag);
 	}
-	AttachProp("spine_03", TEXT("Cube"), FVector(0, -15.f, 2.f), FRotator::ZeroRotator, FVector(28.f, 5.f, 36.f), HarnessColor * 1.5f, 0.6f, 0.1f);
-	for (int32 s = -1; s <= 1; s += 2)
+}
+
+FVector AFallBody::MuzzleLocation() const
+{
+	return WeaponMesh ? WeaponMesh->GetComponentTransform().TransformPosition(UFallArtData::Get()->PistolMuzzle) : Mesh->GetSocketLocation("hand_r");
+}
+
+FVector AFallBody::MuzzleForward() const
+{
+	return WeaponMesh ? WeaponMesh->GetComponentTransform().TransformVectorNoScale(UFallArtData::Get()->PistolForward).GetSafeNormal() : GetActorForwardVector();
+}
+
+float AFallBody::MeasureSelfIntersection(FString* OutWorst) const
+{
+	// Simplified body volumes: a head sphere, a neck capsule, a torso capsule along the spine.
+	auto B = [this](const TCHAR* N) { return Mesh->GetSocketLocation(N); };
+	const FVector Head = B(TEXT("head")), Neck = B(TEXT("neck_01"));
+	const FVector HeadC = Head + (Head - Neck).GetSafeNormal() * 9.f;
+	struct FCap { FVector A, Bv; float R; const TCHAR* Name; };
+	const FCap Caps[] = {{HeadC, HeadC, 11.f, TEXT("head")}, {Neck, Head, 6.f, TEXT("neck")}, {B(TEXT("spine_01")), B(TEXT("spine_05")), 12.f, TEXT("torso")}};
+	struct FSeg { const TCHAR* A; const TCHAR* Bn; float R; const TCHAR* Name; };
+	static const FSeg Segs[] = {
+		{TEXT("lowerarm_l"), TEXT("hand_l"), 4.f, TEXT("forearm_l")}, {TEXT("hand_l"), TEXT("middle_03_l"), 3.f, TEXT("hand_l")},
+		{TEXT("lowerarm_r"), TEXT("hand_r"), 4.f, TEXT("forearm_r")}, {TEXT("hand_r"), TEXT("middle_03_r"), 3.f, TEXT("hand_r")},
+		{TEXT("index_01_l"), TEXT("index_03_l"), 1.5f, TEXT("index_l")}, {TEXT("index_01_r"), TEXT("index_03_r"), 1.5f, TEXT("index_r")},
+	};
+	float Worst = 0.f;
+	for (const FSeg& S : Segs)
 	{
-		AttachProp("pelvis", TEXT("Cube"), FVector(s * 9.f, -12.f, -4.f), FRotator(0.f, 0.f, s * 12.f), FVector(4.f, 3.f, 26.f), HarnessColor);
-		AttachProp("pelvis", TEXT("Cube"), FVector(s * 8.f, 11.f, -6.f), FRotator(0.f, 0.f, s * -20.f), FVector(4.f, 3.f, 20.f), HarnessColor);
+		const FVector P0 = B(S.A), P1 = B(S.Bn);
+		for (int32 k = 0; k <= 4; ++k)
+		{
+			const FVector P = FMath::Lerp(P0, P1, k / 4.f);
+			for (const FCap& C : Caps)
+			{
+				const float D = (C.A - C.Bv).IsNearlyZero() ? (float)FVector::Dist(P, C.A) : (float)FMath::PointDistToSegment(P, C.A, C.Bv);
+				const float Pen = C.R + S.R - D;
+				if (Pen > Worst)
+				{
+					Worst = Pen;
+					if (OutWorst) *OutWorst = FString::Printf(TEXT("%s in %s"), S.Name, C.Name);
+				}
+			}
+		}
 	}
+	return Worst;
+}
+
+void AFallBody::StartReloadMotion(float Duration)
+{
+	ReloadT = 0.f;
+	ReloadDur = FMath::Max(Duration, 0.3f);
+	ReloadStartL = Mesh->GetSocketLocation("hand_l");
+}
+
+void AFallBody::UpdateWeaponHands(float Dt)
+{
+	TriggerPull = FMath::FInterpTo(TriggerPull, 0.f, Dt, 6.f);
+	if (!WeaponMesh) return;
+	const bool bOwnerLeft = Control.HandWeight[0] > 0.f && !bWeaponHand[0];
+	const bool bOwnerRight = Control.HandWeight[1] > 0.f && !bWeaponHand[1];
+	auto Release = [this](int32 h) { if (bWeaponHand[h]) { Control.HandWeight[h] = 0.f; bWeaponHand[h] = false; } };
+	auto Set = [this](int32 h, const FVector& P, float W) { Control.HandTarget[h] = P; Control.HandWeight[h] = W; bWeaponHand[h] = true; };
+
+	// Body frame from the bones: up the spine, across the shoulders, out of the chest.
+	const FVector Pel = Mesh->GetSocketLocation("pelvis"), Chest = Mesh->GetSocketLocation("spine_05");
+	const FVector Up = (Mesh->GetSocketLocation("neck_01") - Pel).GetSafeNormal();
+	const FVector Right = (Mesh->GetSocketLocation("upperarm_r") - Mesh->GetSocketLocation("upperarm_l")).GetSafeNormal();
+	const FVector Front = (Right ^ Up).GetSafeNormal();
+	const UFallArtData* Art = UFallArtData::Get();
+	const FTransform GT = WeaponMesh->GetComponentTransform();
+	const FVector GunUp = GT.TransformVectorNoScale(FVector::UpVector);
+
+	if (ReloadT >= 0.f)
+	{
+		ReloadT += Dt / ReloadDur;
+		if (ReloadT >= 1.f) { ReloadT = -1.f; if (SpareMag) SpareMag->SetVisibility(false); Release(0); Release(1); return; }
+		if (bOwnerLeft || bOwnerRight) return; // holding on to something: the hands are busy
+		// Gun low in front of the chest, well clear of the head; the left hand goes to the pouch on the left hip,
+		// comes back in front of the belly and seats the magazine from below. No point of the path is near the head.
+		Set(1, Chest + Front * 40.f + Right * 6.f - Up * 14.f, 1.f);
+		const FVector Pouch = Pel - Right * 17.f + Front * 11.f - Up * 2.f;
+		const FVector Belly = Chest + Front * 34.f - Right * 8.f - Up * 26.f;
+		const FVector Well = GT.TransformPosition(Art->PistolMagWell) - GunUp * 7.f;
+		const float t = ReloadT;
+		auto Seg = [](float x, float a, float b) { return FMath::SmoothStep(0.f, 1.f, FMath::Clamp((x - a) / (b - a), 0.f, 1.f)); };
+		FVector L;
+		if (t < 0.3f) L = FMath::Lerp(ReloadStartL, Pouch, Seg(t, 0.f, 0.3f));
+		else if (t < 0.55f) L = FMath::Lerp(Pouch, Belly, Seg(t, 0.3f, 0.55f));
+		else if (t < 0.75f) L = FMath::Lerp(Belly, Well, Seg(t, 0.55f, 0.75f));
+		else L = Well + GunUp * 3.f * FMath::Sin(Seg(t, 0.75f, 0.85f) * PI); // the slap
+		Set(0, L, FMath::Min(Seg(t, 0.f, 0.08f), 1.f - Seg(t, 0.9f, 1.f)));
+		if (SpareMag) SpareMag->SetVisibility(t > 0.3f && t < 0.8f);
+		return;
+	}
+	if (Control.bAim && !bOwnerLeft)
+	{
+		// Support hand cups the firing hand from the left, under the grip.
+		Set(0, GT.TransformPosition(Art->PistolGrip) - Right * 6.f - GunUp * 3.f + Front * 1.f, 1.f);
+	}
+	else Release(0);
+	Release(1);
 }
 
 void AFallBody::ResetBody()
@@ -271,6 +431,7 @@ void AFallBody::UpdateBody(float Dt)
 		OverridePose = Control.Override;
 		Follow(OverrideWeight, Control.Override.IsNone() ? 0.f : Control.OverrideTarget, OverridePose == "Canopy" ? 1.4f : 4.f);
 	}
+	UpdateWeaponHands(Dt);
 	Follow(AimWeight, Control.bAim ? 1.f : 0.f, 9.f);
 	Follow(LookWeight, Control.LookAt.IsZero() ? 0.f : 1.f, 4.f);
 	for (int32 h = 0; h < 2; ++h) Follow(HandWeight[h], Control.HandWeight[h], 7.f);
@@ -356,6 +517,8 @@ void AFallBody::UpdateBody(float Dt)
 		In.WindDirCS = MeshRot.UnrotateVector(Control.AirVelocity.GetSafeNormal(UE_SMALL_NUMBER, FVector::UpVector));
 		In.Trail = OverridePose == "Limp" ? OverrideWeight : 0.f;
 		In.Recoil += PendingRecoil;
+		In.bGunInRight = WeaponMesh != nullptr;
+		In.TriggerPull = TriggerPull;
 	}
 	PendingHit = FVector::ZeroVector;
 	PendingRecoil = 0.f;

@@ -1,4 +1,5 @@
 #include "FallWorld.h"
+#include "FallArt.h"
 #include "FallPlayer.h"
 #include "ProceduralMeshComponent.h"
 #include "Components/SkyAtmosphereComponent.h"
@@ -217,17 +218,11 @@ void AFallPlanet::BuildTerrain()
 	Build(TerrainDetail, DetailHalf, 208, false);
 
 	// Forest on the valley slopes.
-	if (UStaticMesh* Cone = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cone.Cone")))
+	const UFallArtData* Art = UFallArtData::Get();
+	if (UStaticMesh* Tree = Art->Trees.Num() ? Art->Trees[0].LoadSynchronous() : nullptr)
 	{
-		Trees->SetStaticMesh(Cone);
-		if (UMaterialInterface* Lit = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Lit.M_FF_Lit")))
-		{
-			UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(Lit, this);
-			MID->SetVectorParameterValue("Color", FLinearColor(0.02f, 0.045f, 0.02f));
-			MID->SetScalarParameterValue("Roughness", 0.95f);
-			MID->SetScalarParameterValue("Metallic", 0.f);
-			Trees->SetMaterial(0, MID);
-		}
+		Trees->SetStaticMesh(Tree);
+		const float TreeH = FMath::Max(Tree->GetBoundingBox().GetSize().Z, 100.f) / 100.f; // metres
 		FRandomStream R(7);
 		TArray<FTransform> Xf;
 		for (int32 i = 0; i < 9000; ++i)
@@ -236,7 +231,8 @@ void AFallPlanet::BuildTerrain()
 			const float Clump = FMath::PerlinNoise2D(FVector2D(X / 400.f, Y / 400.f));
 			if (Clump < 0.05f || FMath::Sqrt(X * X + Y * Y) < 250.f) continue;
 			const float Hgt = R.FRandRange(9.f, 20.f);
-			Xf.Add(FTransform(FRotator(0, R.FRandRange(0, 360), 0), FVector(X, Y, HeightAt(X, Y)) * 100.f + FVector(0, 0, Hgt * 50.f), FVector(Hgt * 0.35f, Hgt * 0.35f, Hgt)));
+			const float Sc = Hgt / TreeH;
+			Xf.Add(FTransform(FRotator(0, R.FRandRange(0, 360), 0), FVector(X, Y, HeightAt(X, Y)) * 100.f, FVector(Sc)));
 		}
 		Trees->AddInstances(Xf, false);
 	}
@@ -269,11 +265,12 @@ AFallSpeedField::AFallSpeedField()
 void AFallSpeedField::BeginPlay()
 {
 	Super::BeginPlay();
-	UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
-	UStaticMesh* Sphere = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+	const UFallArtData* Art = UFallArtData::Get();
+	UStaticMesh* Cube = Art->FxBeam.LoadSynchronous();
+	UStaticMesh* Sphere = Art->FxBall.LoadSynchronous();
 	UMaterialInterface* Add = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Streak.M_FF_Streak"));
 	UMaterialInterface* Cloud = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Sprite.M_FF_Sprite"));
-	UStaticMesh* Plane = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Plane.Plane"));
+	UStaticMesh* Plane = Art->FxQuad.LoadSynchronous();
 
 	Streaks->SetStaticMesh(Cube);
 	if (Add)

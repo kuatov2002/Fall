@@ -6,6 +6,10 @@
 #include "Kismet/GameplayStatics.h"
 #include "Camera/PlayerCameraManager.h"
 #include "EngineUtils.h"
+#include "FallArt.h"
+#include "NiagaraComponent.h"
+#include "NiagaraFunctionLibrary.h"
+#include "NiagaraSystem.h"
 
 AFallFX::AFallFX()
 {
@@ -27,9 +31,15 @@ AFallFX* AFallFX::Get(const UObject* WorldContext)
 void AFallFX::BeginPlay()
 {
 	Super::BeginPlay();
-	UStaticMesh* Plane = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Plane.Plane"));
-	UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
-	UStaticMesh* Sphere = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+	const UFallArtData* Art = UFallArtData::Get();
+	UStaticMesh* Plane = Art->FxQuad.LoadSynchronous();
+	UStaticMesh* Cube = Art->FxBeam.LoadSynchronous();
+	UStaticMesh* Sphere = Art->FxBall.LoadSynchronous();
+	AirAnchor = NewObject<USceneComponent>(this, TEXT("AirAnchor"));
+	AirAnchor->SetupAttachment(RootComponent);
+	AirAnchor->SetUsingAbsoluteLocation(true);
+	AirAnchor->SetUsingAbsoluteRotation(true);
+	AirAnchor->RegisterComponent();
 	UMaterialInterface* SpriteMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Sprite.M_FF_Sprite"));
 	UMaterialInterface* AddMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Additive.M_FF_Additive"));
 
@@ -154,10 +164,25 @@ int32 AFallFX::Beam(int32 Handle, const FVector& A, const FVector& B, const FLin
 	return bVisible ? Handle : INDEX_NONE;
 }
 
+UNiagaraComponent* AFallFX::SpawnInAir(UNiagaraSystem* System, const FVector& Pos, float Scale, const FRotator& Rot)
+{
+	if (!System || !AirAnchor) return nullptr;
+	return UNiagaraFunctionLibrary::SpawnSystemAttached(System, AirAnchor, NAME_None, Pos, Rot, FVector(Scale), EAttachLocation::KeepWorldPosition, true, ENCPoolMethod::AutoRelease);
+}
+
+UNiagaraComponent* AFallFX::SpawnOn(UNiagaraSystem* System, USceneComponent* Parent, const FVector& WorldPos, float Scale, const FRotator& WorldRot)
+{
+	if (!System) return nullptr;
+	if (!Parent) return SpawnInAir(System, WorldPos, Scale, WorldRot);
+	return UNiagaraFunctionLibrary::SpawnSystemAttached(System, Parent, NAME_None, WorldPos, WorldRot, FVector(Scale), EAttachLocation::KeepWorldPosition, true, ENCPoolMethod::AutoRelease);
+}
+
 void AFallFX::Explosion(const FVector& Pos, float Scale)
 {
+	const UFallArtData* Art = UFallArtData::Get();
 	Flash(Pos, 900.f * Scale, FLinearColor(1.f, 0.6f, 0.25f), 0.25f);
-	for (int32 i = 0; i < 10; ++i)
+	SpawnInAir((Scale > 2.f ? Art->ExplosionLarge : Art->Explosion).LoadSynchronous(), Pos, Scale * (Scale > 2.f ? 1.2f : 1.6f), FRotator(FMath::FRandRange(0.f, 360.f), FMath::FRandRange(0.f, 360.f), 0.f));
+	for (int32 i = 0; i < 4; ++i)
 	{
 		Sprite(Pos + FMath::VRand() * 200.f * Scale, FMath::VRand() * 900.f * Scale, 500.f * Scale, 1300.f * Scale, FMath::FRandRange(0.5f, 0.9f), FLinearColor(1.f, 0.45f, 0.1f), 0.9f, true, 6.f);
 	}
@@ -175,6 +200,7 @@ void AFallFX::Tick(float Dt)
 	const FVector Air = FW ? FVector(-FW->PlayerVelocityH.X, -FW->PlayerVelocityH.Y, FW->PlayerFallSpeed) : FVector::ZeroVector;
 	APlayerCameraManager* Cam = UGameplayStatics::GetPlayerCameraManager(this, 0);
 	const FVector C = Cam ? Cam->GetCameraLocation() : FVector::ZeroVector;
+	if (AirAnchor) AirAnchor->SetWorldLocation(AirAnchor->GetComponentLocation() + Air * Dt);
 
 	for (FPart& P : Sprites)
 	{

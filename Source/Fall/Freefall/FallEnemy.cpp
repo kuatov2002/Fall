@@ -1,4 +1,5 @@
 #include "FallEnemy.h"
+#include "FallArt.h"
 #include "FallPlayer.h"
 #include "FallWorld.h"
 #include "FallFX.h"
@@ -154,52 +155,39 @@ void AFallEnemy::EndPlay(const EEndPlayReason::Type Reason)
 	Super::EndPlay(Reason);
 }
 
+UMaterialInterface* AFallEnemy::RoleMaterial() const
+{
+	const UFallArtData* Art = UFallArtData::Get();
+	switch (GetType())
+	{
+	case EFallEnemyType::Heavy: return Art->HeavyMaterial.LoadSynchronous();
+	case EFallEnemyType::Wingsuiter: return Art->WingsuitMaterial.LoadSynchronous();
+	case EFallEnemyType::Target: return Art->CarrierMaterial.LoadSynchronous();
+	default: return Art->ShooterMaterial.LoadSynchronous();
+	}
+}
+
 void AFallEnemy::BuildOutfit()
 {
-	// Same harness, red visor; the heavy wears a bulkier vest; the target carries the only parachute container.
-	AttachProp("head", TEXT("Sphere"), FVector(0, -1.5f, 9.5f), FRotator::ZeroRotator, FVector(23.f, 26.f, 23.f), FLinearColor(0.03f, 0.03f, 0.03f), 0.35f, 0.2f);
-	AttachProp("head", TEXT("Cube"), FVector(0, 9.5f, 6.f), FRotator::ZeroRotator, FVector(17.f, 4.f, 5.f), Data ? Data->AccentColor * 2.f : FLinearColor::Red, 0.1f, 0.6f);
-	if (UStaticMeshComponent* Beacon = AttachProp("head", TEXT("Sphere"), FVector(0, -2.f, 22.f), FRotator::ZeroRotator, FVector(11.f), FLinearColor::Black, 0.3f, 0.f))
-	{
-		if (UMaterialInterface* U = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Unlit.M_FF_Unlit")))
-		{
-			UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(U, this);
-			MID->SetVectorParameterValue("Color", Data ? Data->AccentColor : FLinearColor::Red);
-			MID->SetScalarParameterValue("Intensity", 60.f);
-			Beacon->SetMaterial(0, MID);
-		}
-	}
-	for (int32 s = -1; s <= 1; s += 2)
-	{
-		AttachProp("spine_05", TEXT("Cube"), FVector(s * 9.f, 0.f, 9.f), FRotator::ZeroRotator, FVector(4.f, 30.f, 3.f), HarnessColor);
-		AttachProp(s < 0 ? "thigh_l" : "thigh_r", TEXT("Cylinder"), FVector(0, 0, -8.f), FRotator::ZeroRotator, FVector(19.f, 19.f, 4.f), HarnessColor);
-	}
+	// The suit, helmet and the red accent lights come with the character; the heavy carries a fuel bottle on his
+	// back (the weak point), the carrier the only parachute container.
+	const UFallArtData* Art = UFallArtData::Get();
 	const EFallEnemyType T = GetType();
 	if (T == EFallEnemyType::Heavy)
 	{
-		AttachProp("spine_03", TEXT("Cube"), FVector(0, 4.f, 4.f), FRotator::ZeroRotator, FVector(40.f, 34.f, 40.f), FLinearColor(0.08f, 0.08f, 0.07f), 0.5f, 0.4f);
-		// Glowing power pack on the back: the weak point, visible when you flank him.
-		if (UStaticMeshComponent* Weak = AttachProp("spine_03", TEXT("Cube"), FVector(0, -22.f, 4.f), FRotator::ZeroRotator, FVector(26.f, 10.f, 30.f), FLinearColor::Black, 0.3f, 0.f))
+		if (UStaticMesh* Bottle = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/Freefall/Assets/Models/small_lpg_tank/small_lpg_tank_2k/StaticMeshes/small_lpg_tank_2k.small_lpg_tank_2k")))
 		{
-			if (UMaterialInterface* U = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Unlit.M_FF_Unlit")))
-			{
-				UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(U, this);
-				MID->SetVectorParameterValue("Color", FLinearColor(1.f, 0.45f, 0.05f));
-				MID->SetScalarParameterValue("Intensity", 25.f);
-				Weak->SetMaterial(0, MID);
-			}
+			AttachMesh("spine_03", Bottle, FVector(0, -24.f, 2.f), FRotator::ZeroRotator, 0.75f);
 		}
 	}
 	if (T == EFallEnemyType::Target)
 	{
-		// Bright yellow container: the one thing worth chasing, readable at 50 m.
-		Pack = AttachProp("spine_03", TEXT("Cube"), FVector(0, -19.f, 2.f), FRotator::ZeroRotator, FVector(36.f, 18.f, 46.f), FLinearColor(1.f, 0.62f, 0.02f), 0.5f, 0.f);
-		AttachProp("spine_03", TEXT("Cube"), FVector(0, -29.f, 14.f), FRotator::ZeroRotator, FVector(10.f, 4.f, 10.f), FLinearColor(0.8f, 0.05f, 0.03f), 0.5f, 0.f);
+		Pack = AttachMesh("spine_03", Art->ParachuteContainer.LoadSynchronous(), FVector(0, -14.f, 2.f), FRotator(0.f, 180.f, 0.f), 1.05f);
 	}
 	if (T == EFallEnemyType::Shooter || T == EFallEnemyType::Target || T == EFallEnemyType::Wingsuiter)
 	{
-		// Compact SMG in the right hand.
-		Gun = AttachProp("hand_r", TEXT("Cube"), FVector(14.f, 2.f, -3.f), FRotator::ZeroRotator, FVector(26.f, 5.f, 8.f), FLinearColor(0.02f, 0.02f, 0.02f), 0.4f, 0.7f);
+		ArmWeapon();
+		Gun = WeaponMesh;
 	}
 }
 
@@ -216,46 +204,27 @@ void AFallEnemy::BuildTurret()
 	P->Holder = this;
 	Platform = P;
 
-	UStaticMesh* Cyl = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
-	UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
-	UMaterialInterface* Lit = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Lit.M_FF_Lit"));
-	auto Part = [&](USceneComponent* Parent, UStaticMesh* M, FVector Loc, FRotator Rot, FVector Scale, FLinearColor C)
-	{
-		UStaticMeshComponent* SM = NewObject<UStaticMeshComponent>(P);
-		SM->SetStaticMesh(M);
-		SM->SetupAttachment(Parent);
-		SM->SetRelativeLocation(Loc);
-		SM->SetRelativeRotation(Rot);
-		SM->SetRelativeScale3D(Scale);
-		SM->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		SM->RegisterComponent();
-		if (Lit)
-		{
-			UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(Lit, P);
-			MID->SetVectorParameterValue("Color", C);
-			MID->SetScalarParameterValue("Metallic", 0.7f);
-			MID->SetScalarParameterValue("Roughness", 0.45f);
-			SM->SetMaterial(0, MID);
-		}
-		TurretParts.Add(SM);
-		return SM;
-	};
 	const float Top = P->Box->GetUnscaledBoxExtent().Z;
-	Part(P->GetRootComponent(), Cyl, FVector(0, 0, Top + 30.f), FRotator::ZeroRotator, FVector(1.4f, 1.4f, 0.6f), FLinearColor(0.06f, 0.06f, 0.06f));
 	TurretHead = NewObject<USceneComponent>(P, TEXT("TurretHead"));
 	TurretHead->SetupAttachment(P->GetRootComponent());
-	TurretHead->SetRelativeLocation(FVector(0, 0, Top + 95.f));
+	TurretHead->SetRelativeLocation(FVector(0, 0, Top + 185.f));
 	TurretHead->RegisterComponent();
-	Part(TurretHead, Cube, FVector(0, 0, 0), FRotator::ZeroRotator, FVector(1.2f, 0.9f, 0.7f), FLinearColor(0.1f, 0.1f, 0.09f));
-	Part(TurretHead, Cyl, FVector(110.f, 0, 8.f), FRotator(-90.f, 0, 0), FVector(0.25f, 0.25f, 1.8f), FLinearColor(0.03f, 0.03f, 0.03f));
-	Part(TurretHead, Cube, FVector(55.f, 0, 25.f), FRotator::ZeroRotator, FVector(0.12f, 1.9f, 1.5f), FLinearColor(0.85f, 0.83f, 0.78f));
-	Part(TurretHead, Cube, FVector(62.f, 0, 62.f), FRotator::ZeroRotator, FVector(0.04f, 1.9f, 0.12f), FLinearColor(0.9f, 0.6f, 0.05f));
-	Part(TurretHead, Cube, FVector(62.f, 0, -12.f), FRotator::ZeroRotator, FVector(0.04f, 1.9f, 0.12f), FLinearColor(0.9f, 0.6f, 0.05f));
-	Part(TurretHead, Cube, FVector(56.f, 0, 25.f), FRotator::ZeroRotator, FVector(0.1f, 0.4f, 0.2f), Data->AccentColor * 3.f);
+	if (UStaticMesh* TM = UFallArtData::Get()->Turret.LoadSynchronous())
+	{
+		// Pintle on the deck, receiver at the head pivot; the model's gun points +X.
+		UStaticMeshComponent* SM = NewObject<UStaticMeshComponent>(P);
+		SM->SetStaticMesh(TM);
+		SM->SetupAttachment(TurretHead);
+		SM->SetRelativeLocation(FVector(0, 0, -185.f));
+		SM->SetRelativeScale3D(FVector(2.2f));
+		SM->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		SM->RegisterComponent();
+		TurretParts.Add(SM);
+	}
 	Shield = NewObject<UBoxComponent>(P, TEXT("TurretShield"));
 	Shield->SetupAttachment(TurretHead);
-	Shield->SetRelativeLocation(FVector(55.f, 0, 25.f));
-	Shield->SetBoxExtent(FVector(8.f, 95.f, 75.f));
+	Shield->SetRelativeLocation(FVector(90.f, 0, 5.f));
+	Shield->SetBoxExtent(FVector(10.f, 92.f, 70.f));
 	Shield->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	Shield->SetCollisionResponseToAllChannels(ECR_Ignore);
 	Shield->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
@@ -268,9 +237,9 @@ FVector AFallEnemy::Muzzle() const
 {
 	if (GetType() == EFallEnemyType::Heavy && TurretHead)
 	{
-		return TurretHead->GetComponentTransform().TransformPosition(FVector(200.f, 0, 8.f));
+		return TurretHead->GetComponentTransform().TransformPosition(FVector(400.f, 0, 0.f));
 	}
-	if (Gun) return Gun->GetComponentTransform().TransformPosition(FVector(60.f, 0.f, 0.f));
+	if (WeaponMesh) return MuzzleLocation();
 	return Mesh->GetSocketLocation("hand_r");
 }
 
@@ -655,7 +624,7 @@ void AFallEnemy::TickHeavy(float Dt, AFallPlayer* P)
 	TurretPitch = FMath::FInterpTo(TurretPitch, WantPitch, Dt, 2.f);
 	TurretHead->SetRelativeRotation(FRotator(TurretPitch, TurretYaw, 0.f));
 	const FTransform HT = TurretHead->GetComponentTransform();
-	const FVector Behind = HT.TransformPosition(FVector(-115.f, 0.f, -10.f));
+	const FVector Behind = HT.TransformPosition(FVector(-125.f, 0.f, -20.f));
 	SetActorLocation(FMath::VInterpTo(GetActorLocation(), Behind, Dt, 6.f));
 	const FVector Fwd = HT.GetUnitAxis(EAxis::X);
 	const FQuat FaceWorld = FRotationMatrix::MakeFromXZ(Fwd, FVector::UpVector).ToQuat() * FQuat(FVector::RightVector, FMath::DegreesToRadians(-10.f));
@@ -664,8 +633,8 @@ void AFallEnemy::TickHeavy(float Dt, AFallPlayer* P)
 	Control.AttitudeWeight = 1.f;
 	Control.Override = "Grab";
 	Control.OverrideTarget = 1.f;
-	Control.HandTarget[0] = HT.TransformPosition(FVector(-45.f, -38.f, 0.f));
-	Control.HandTarget[1] = HT.TransformPosition(FVector(-45.f, 38.f, 0.f));
+	Control.HandTarget[0] = HT.TransformPosition(FVector(-62.f, -22.f, -10.f));
+	Control.HandTarget[1] = HT.TransformPosition(FVector(-62.f, 22.f, -10.f));
 	Control.HandWeight[0] = Control.HandWeight[1] = 1.f;
 	Control.LookAt = PP;
 	LaggedAim = LaggedAim.IsZero() ? PP : FMath::VInterpTo(LaggedAim, PP, Dt, 1.f / FMath::Max(Data->AimLag, 0.05f));

@@ -32,6 +32,11 @@ public:
 	/** Explosion: flash, fire and smoke, sparks. */
 	void Explosion(const FVector& Pos, float Scale);
 
+	/** Niagara system that travels with the air (explosions, smoke): attached to the air anchor, local space. */
+	class UNiagaraComponent* SpawnInAir(class UNiagaraSystem* System, const FVector& Pos, float Scale = 1.f, const FRotator& Rot = FRotator::ZeroRotator);
+	/** Niagara system that travels with an object (fire, sparks, muzzle flash). */
+	class UNiagaraComponent* SpawnOn(class UNiagaraSystem* System, USceneComponent* Parent, const FVector& WorldPos, float Scale = 1.f, const FRotator& WorldRot = FRotator::ZeroRotator);
+
 	/** Persistent beam (telegraph laser); returns a handle. Hide with Beam(handle, ..., false). */
 	int32 Beam(int32 Handle, const FVector& A, const FVector& B, const FLinearColor& Color, float Width, bool bVisible);
 
@@ -62,6 +67,8 @@ protected:
 	FLine* TakeLine();
 
 	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Owned;
+	/** Moves with the air (up at the player's fall speed, against its horizontal drift). */
+	UPROPERTY() TObjectPtr<USceneComponent> AirAnchor;
 	TArray<FPart> Sprites, Flashes, SparkPool;
 	TArray<FLine> Lines;
 	int32 SpriteCursor = 0, FlashCursor = 0, SparkCursor = 0, LineCursor = 0;

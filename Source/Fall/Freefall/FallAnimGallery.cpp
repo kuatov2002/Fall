@@ -1,4 +1,6 @@
 #include "FallAnimGallery.h"
+#include "Misc/FileHelper.h"
+#include "FallArt.h"
 #include "FallBody.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Camera/CameraActor.h"
@@ -16,7 +18,7 @@
 
 namespace
 {
-	const TCHAR* AngleNames[3] = {TEXT("front"), TEXT("side"), TEXT("game")};
+	const TCHAR* AngleNames[4] = {TEXT("front"), TEXT("side"), TEXT("game"), TEXT("low")};
 }
 
 TArray<AFallAnimGallery::FEntry> AFallAnimGallery::Entries()
@@ -37,6 +39,8 @@ TArray<AFallAnimGallery::FEntry> AFallAnimGallery::Entries()
 		{TEXT("13_wingsuit"), 3.f},
 		{TEXT("14_limp"), 3.f},
 		{TEXT("15_canopy_open"), 3.5f},
+		{TEXT("16_reload"), 3.f},
+		{TEXT("17_aim_hold"), 3.f},
 	};
 }
 
@@ -74,13 +78,13 @@ AFallAnimGallery::AFallAnimGallery()
 void AFallAnimGallery::BeginPlay()
 {
 	Super::BeginPlay();
-	if (UStaticMesh* Sphere = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere")))
+	if (UStaticMesh* Sphere = UFallArtData::Get()->FxBall.LoadSynchronous())
 	{
 		Backdrop->SetStaticMesh(Sphere);
 		Backdrop->SetWorldScale3D(FVector(400.f));
 		Backdrop->SetMaterial(0, LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Backdrop.M_FF_Backdrop")));
 	}
-	if (UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube")))
+	if (UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/Freefall/Assets/Debris/SM_Zep_BlastDoor.SM_Zep_BlastDoor")))
 	{
 		Prop->SetStaticMesh(Cube);
 		if (UMaterialInterface* Lit = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Lit.M_FF_Lit")))
@@ -104,6 +108,7 @@ void AFallAnimGallery::BeginPlay()
 	int32 Only = -1;
 	FParse::Value(FCommandLine::Get(), TEXT("FallGalleryOnly="), Only);
 	OnlyEntry = Only;
+	bCloseup = FParse::Param(FCommandLine::Get(), TEXT("FallGalleryCloseup"));
 	StartEntry(FMath::Max(Only, 0), bCapture ? 0 : 2);
 }
 
@@ -119,7 +124,8 @@ void AFallAnimGallery::StartEntry(int32 Index, int32 InAngle)
 	FActorSpawnParameters P;
 	P.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	Body = GetWorld()->SpawnActor<AFallBody>(AFallBody::StaticClass(), FTransform::Identity, P);
-	Body->bDrawTrails = true;
+	Body->bDrawTrails = !bCloseup;
+	Body->ArmWeapon();
 	Prop->SetVisibility(false);
 
 	const FString Name = Entries()[Entry].Name;
@@ -143,6 +149,16 @@ void AFallAnimGallery::StartEntry(int32 Index, int32 InAngle)
 void AFallAnimGallery::PlaceCamera()
 {
 	// Front looks at the head (the head points +X in the belly pose), side shows the profile, game sits behind and above.
+	if (bCloseup && Body)
+	{
+		// Four views around the hands and the weapon, 90 cm away.
+		const FVector Want = (Body->Mesh->GetSocketLocation("hand_r") * 2.f + Body->Mesh->GetSocketLocation("hand_l")) / 3.f;
+		HandFocus = HandFocus.IsZero() || T < 0.05f ? Want : FMath::Lerp(HandFocus, Want, 0.15f);
+		static const FVector Dir[4] = {FVector(1, 0.3f, 0.35f), FVector(0.2f, 1, 0.25f), FVector(-0.6f, 0.4f, 0.9f), FVector(0.3f, -1, 0.1f)};
+		Cam->SetActorLocation(HandFocus + Dir[Angle].GetSafeNormal() * 90.f);
+		Cam->SetActorRotation((HandFocus - Cam->GetActorLocation()).Rotation());
+		return;
+	}
 	static const FVector Loc[3] = {FVector(430.f, 0.f, 40.f), FVector(0.f, 430.f, 20.f), FVector(-400.f, 45.f, 160.f)};
 	const FVector Target(0.f, 0.f, 0.f);
 	Cam->SetActorLocation(Loc[Angle]);
@@ -182,13 +198,21 @@ void AFallAnimGallery::ApplyEntry(float Dt)
 	else if (Name.Contains(TEXT("11_aim")))
 	{
 		C.bAim = true; C.AimAt = FVector(1200.f, 300.f, -150.f); C.LookAt = C.AimAt;
-		for (float s = 0.8f; s < 2.2f; s += 0.22f) if (Crossed(s)) Body->AddRecoil(1.f);
+		for (float s = 0.8f; s < 2.2f; s += 0.22f) if (Crossed(s)) { Body->AddRecoil(1.f); Body->TriggerPull = 1.f; }
 	}
 	else if (Name.Contains(TEXT("12_hit")))
 	{
 		if (Crossed(0.6f)) Body->ReceiveHit(FVector(0, 1, 0), 1.f, 0.f);
 		if (Crossed(1.5f)) Body->ReceiveHit(FVector(-1, 0, 0.3f), 1.4f, 0.f);
 		if (Crossed(2.3f)) Body->ReceiveHit(FVector(0.3f, -1.f, 0.2f), 1.8f, 0.f);
+	}
+	else if (Name.Contains(TEXT("16_reload")))
+	{
+		if (Crossed(0.3f)) Body->StartReloadMotion(1.6f);
+	}
+	else if (Name.Contains(TEXT("17_aim")))
+	{
+		C.bAim = true; C.AimAt = FVector(1200.f, -200.f, -250.f + 150.f * FMath::Sin(t * 1.3f)); C.LookAt = C.AimAt;
 	}
 	else if (Name.Contains(TEXT("13_wing"))) { C.Override = "Wingsuit"; C.OverrideTarget = 1.f; C.AirVelocity = FVector(-4000.f, 0, 3000.f); }
 	else if (Name.Contains(TEXT("14_limp"))) { C.Override = "Limp"; C.OverrideTarget = 1.f; }
@@ -225,6 +249,16 @@ void AFallAnimGallery::Tick(float Dt)
 	PrevT = T;
 	T += Dt;
 	ApplyEntry(Dt);
+	if (bCloseup) PlaceCamera(); // follow the hands, not where they were at spawn
+	if (Body && Angle == 0)
+	{
+		FString Pair;
+		const float Pen = Body->MeasureSelfIntersection(&Pair);
+		FIntersect& I = Intersections.FindOrAdd(E[Entry].Name);
+		++I.Frames;
+		if (Pen > 1.f) ++I.Bad;
+		if (Pen > I.Worst) { I.Worst = Pen; I.WorstT = T; I.Pair = Pair; }
+	}
 	if (FParse::Param(FCommandLine::Get(), TEXT("FallAnimDebug")) && FMath::Fmod(T, 1.f) < Dt)
 	{
 		UE_LOG(LogTemp, Display, TEXT("FallGalleryDebug t=%.2f pivot %s handL %s handR %s pelvis %s"), T, *Body->BodyPivot->GetComponentRotation().ToCompactString(),
@@ -238,8 +272,25 @@ void AFallAnimGallery::Tick(float Dt)
 	if (T >= E[Entry].Duration)
 	{
 		if (!bCapture) { StartEntry(Entry, Angle); return; }
-		if (Angle < 2) StartEntry(Entry, Angle + 1);
+		const int32 LastAngle = bCloseup ? 3 : 2;
+		if (Angle < LastAngle) StartEntry(Entry, Angle + 1);
 		else if (Entry + 1 < E.Num() && OnlyEntry < 0) StartEntry(Entry + 1, 0);
-		else FPlatformMisc::RequestExit(false);
+		else { WriteIntersections(); FPlatformMisc::RequestExit(false); }
 	}
+}
+
+void AFallAnimGallery::WriteIntersections()
+{
+	// Gate: no hand, finger or forearm inside the head, neck or torso volumes on any frame (1 cm tolerance).
+	FString Out = TEXT("{\n");
+	int32 Bad = 0;
+	for (const TPair<FString, FIntersect>& P : Intersections)
+	{
+		Bad += P.Value.Bad;
+		Out += FString::Printf(TEXT("  \"%s\": {\"frames\": %d, \"bad_frames\": %d, \"worst_cm\": %.1f, \"worst_t\": %.2f, \"pair\": \"%s\"},\n"), *P.Key, P.Value.Frames, P.Value.Bad, P.Value.Worst, P.Value.WorstT, *P.Value.Pair);
+		UE_LOG(LogTemp, Display, TEXT("FallSelfIntersect %s frames %d bad %d worst %.1f cm at %.2f s (%s)"), *P.Key, P.Value.Frames, P.Value.Bad, P.Value.Worst, P.Value.WorstT, *P.Value.Pair);
+	}
+	Out += FString::Printf(TEXT("  \"total_bad_frames\": %d\n}\n"), Bad);
+	UE_LOG(LogTemp, Display, TEXT("FallSelfIntersect %s: %d bad frames"), Bad == 0 ? TEXT("PASS") : TEXT("FAIL"), Bad);
+	FFileHelper::SaveStringToFile(Out, *(CaptureDir / TEXT("self_intersection.json")));
 }

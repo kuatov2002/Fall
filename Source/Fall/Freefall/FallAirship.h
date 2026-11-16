@@ -24,11 +24,11 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	void Breakup();
-	UStaticMeshComponent* Part(const TCHAR* Shape, const FVector& Loc, const FRotator& Rot, const FVector& SizeM, const FLinearColor& Color);
 
 	UPROPERTY() TObjectPtr<UFallMoverComponent> Mover;
 	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Parts;
 	UPROPERTY() TObjectPtr<class UPointLightComponent> Glow;
+	UPROPERTY() TArray<TObjectPtr<class UNiagaraComponent>> Fires;
 	float Age = 0.f;
 	float FireTimer = 0.f;
 	bool bBroken = false;

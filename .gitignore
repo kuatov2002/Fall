@@ -75,3 +75,12 @@ DerivedDataCache/*
 
 # Raw third-party downloads (re-fetch with Tools/fetch_*.py)
 ThirdParty/
+# Fab packs: re-install from Fab (FabToolset.InstallFabListing or Window > Fab); the Fab license does not allow
+# redistributing their source assets in a public repository. See CREDITS.md for the list.
+Content/Fab/
+Content/NiagaraExamples/
+Content/Fire_EXP_Vol01_Free/
+Content/RetroFuturisticSoldier/
+Content/M1911/
+Content/PN_interactiveSpruceForest/
+Content/FreeWeaponSFX/

@@ -52,7 +52,7 @@ def out(m, node, prop, o=''):
 
 def finish(m):
     # Without usage flags an uncooked -game run silently falls back to the default material.
-    for flag in ('used_with_skeletal_mesh', 'used_with_instanced_static_meshes', 'used_with_niagara_sprites', 'used_with_niagara_meshes', 'used_with_niagara_ribbons'):
+    for flag in ('used_with_skeletal_mesh', 'used_with_instanced_static_meshes', 'used_with_niagara_sprites', 'used_with_niagara_meshes', 'used_with_niagara_ribbons', 'used_with_nanite'):
         try:
             m.set_editor_property(flag, True)
         except Exception:
@@ -192,3 +192,29 @@ finish(m)
 
 unreal.EditorAssetLibrary.save_directory(P)
 print('FALL_MATERIALS_OK')
+
+
+# PBR master for downloaded texture sets (Poly Haven: diffuse, OpenGL normal flipped on import, ARM = AO/rough/metal).
+def tparam(m, name, tex, sampler, x, y, uv=None):
+    n = e(m, unreal.MaterialExpressionTextureSampleParameter2D, x, y, parameter_name=name, texture=unreal.load_asset(tex), sampler_type=sampler)
+    if uv is not None:
+        mel.connect_material_expressions(uv, '', n, 'UVs')
+    return n
+
+
+for name, two_sided in (('M_FF_PBR', False), ('M_FF_PBRTwoSided', True)):
+    m = mk(name)
+    tc = e(m, unreal.MaterialExpressionTextureCoordinate, -900, 0)
+    uv = mul(m, tc, sparam(m, 'Tiling', 1.0, -900, 120), -750, 0)
+    bc = tparam(m, 'BaseColor', '/Engine/EngineResources/WhiteSquareTexture', unreal.MaterialSamplerType.SAMPLERTYPE_COLOR, -500, -200, uv)
+    nm = tparam(m, 'Normal', '/Engine/EngineMaterials/FlatNormal', unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL, -500, 100, uv)
+    arm = tparam(m, 'ARM', '/Game/Freefall/Assets/Textures/metal_plate/metal_plate_arm_2k', unreal.MaterialSamplerType.SAMPLERTYPE_MASKS, -500, 400, uv)
+    out(m, mul(m, bc, vparam(m, 'Tint', unreal.LinearColor(1, 1, 1, 1), -300, -300), -150, -200, 'RGB'), MP.MP_BASE_COLOR)
+    out(m, nm, MP.MP_NORMAL, 'RGB')
+    out(m, mul(m, arm, sparam(m, 'RoughnessMul', 1.0, -300, 500), -150, 450, 'G'), MP.MP_ROUGHNESS)
+    out(m, mul(m, arm, sparam(m, 'MetallicMul', 1.0, -300, 600), -150, 550, 'B'), MP.MP_METALLIC)
+    out(m, arm, MP.MP_AMBIENT_OCCLUSION, 'R')
+    m.set_editor_property('two_sided', two_sided)
+    finish(m)
+unreal.EditorAssetLibrary.save_directory(P)
+print('FALL_PBR_OK')

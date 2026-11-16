@@ -124,6 +124,7 @@ void FFallAnimProxy::Init(const FReferenceSkeleton& Ref)
 	RefCS.SetNum(NumBones);
 	OutCS.SetNum(NumBones);
 	Roles.Init(ERole::None, NumBones);
+	IndexFinger.Init(false, NumBones);
 	RoleIndex.Init(0, NumBones);
 	SpringQ.Init(FQuat::Identity, NumBones);
 	SpringW.Init(FVector::ZeroVector, NumBones);
@@ -218,7 +219,7 @@ void FFallAnimProxy::Init(const FReferenceSkeleton& Ref)
 			for (int32 j = 1; j <= 3; ++j)
 			{
 				const int32 B = Find(*FString::Printf(TEXT("%s_0%d%s"), F, j, Sfx));
-				if (B >= 0) { Roles[B] = ERole::Finger; RoleIndex[B] = s; }
+				if (B >= 0) { Roles[B] = ERole::Finger; RoleIndex[B] = s; IndexFinger[B] = FCString::Strcmp(F, TEXT("index")) == 0; }
 			}
 		}
 	}
@@ -299,8 +300,8 @@ void FFallAnimProxy::SolveLimb(FLimbRef& L, const FFallLimb& P, const FVector Ax
 	{
 		const FVector Out = Axes[kRight] * (L.bRight ? -1.f : 1.f);
 		const float W = Smooth(In.Trail);
-		DU = FMath::Lerp(DU, (In.WindDirCS + Out * 0.6f).GetSafeNormal(), W * 0.7f).GetSafeNormal();
-		DL = FMath::Lerp(DL, (In.WindDirCS + Out * 0.3f).GetSafeNormal(), W * 0.85f).GetSafeNormal();
+		DU = FMath::Lerp(DU, (In.WindDirCS + Out * 1.1f).GetSafeNormal(), W * 0.75f).GetSafeNormal(); // trails outward, never across the chest
+		DL = FMath::Lerp(DL, (In.WindDirCS + Out * 0.8f).GetSafeNormal(), W * 0.85f).GetSafeNormal();
 	}
 
 	// Two-bone IK to a hand target (grab), elbow keeps the side of the posed elbow.
@@ -510,7 +511,7 @@ bool FFallAnimProxy::Evaluate(FPoseContext& Output)
 			if (SpringValid[i])
 			{
 				SpringW[i] += GustKick * 1.2f + HitAxis * 1.4f;
-				if (L.bArm && L.bRight && In.Recoil > 0.f) SpringW[i] += (L.TU ^ Chest[kUp]).GetSafeNormal() * -In.Recoil * 20.f;
+				if (L.bArm && L.bRight && In.Recoil > 0.f) SpringW[i] += (L.TU ^ Chest[kUp]).GetSafeNormal() * In.Recoil * 6.f; // the arm rises with the shot
 			}
 			Rot = Flutter(i, G.NoiseDeg.Y * 0.3f * In.Wind * FlutterMul) * Spring(i, Noise(i, FMath::Lerp(G.NoiseDeg.X, G.NoiseDeg.Y, In.Wind) * NoiseMul) * T, G, StiffMul * (bKickLeg ? 3.f : 1.f), Dt);
 			break;
@@ -542,7 +543,7 @@ bool FFallAnimProxy::Evaluate(FPoseContext& Output)
 			if (SpringValid[i])
 			{
 				SpringW[i] += GustKick * 2.f;
-				if (L.bArm && L.bRight && In.Recoil > 0.f) SpringW[i] += (L.TL ^ Chest[kUp]).GetSafeNormal() * -In.Recoil * 22.f;
+				if (L.bArm && L.bRight && In.Recoil > 0.f) SpringW[i] += (L.TL ^ Chest[kUp]).GetSafeNormal() * In.Recoil * 8.f; // muzzle flips up, wrist returns on the spring
 			}
 			Rot = Flutter(i, G.NoiseDeg.Y * 0.3f * In.Wind * FlutterMul) * Spring(i, Noise(i, FMath::Lerp(G.NoiseDeg.X, G.NoiseDeg.Y, In.Wind) * NoiseMul) * T, G, StiffMul, Dt);
 			break;
@@ -552,7 +553,13 @@ bool FFallAnimProxy::Evaluate(FPoseContext& Output)
 			const FLimbRef& L = Limbs[RI];
 			const FQuat HandDelta = OutCS[L.End].GetRotation() * RefCS[L.End].GetRotation().Inverse();
 			const float Flutter = FMath::PerlinNoise1D(Clock * 5.f + i * 0.37f) * 0.08f * In.Wind;
-			Rot = FQuat(HandDelta.RotateVector(CurlAxisRef[RI]), FMath::DegreesToRadians(55.f * FMath::Clamp(L.Curl + Flutter, 0.f, 1.f))) * Rot;
+			float Curl = L.Curl + Flutter;
+			if (RI == 1 && In.bGunInRight)
+			{
+				// Wrapped round the grip; the index finger lies along the frame and moves onto the trigger to fire.
+				Curl = IndexFinger[i] ? FMath::Lerp(0.18f, 0.5f, In.TriggerPull) : FMath::Max(Curl, 0.95f);
+			}
+			Rot = FQuat(HandDelta.RotateVector(CurlAxisRef[RI]), FMath::DegreesToRadians(55.f * FMath::Clamp(Curl, 0.f, 1.f))) * Rot;
 			break;
 		}
 		default:

@@ -7,6 +7,8 @@
 #include "FallFX.h"
 #include "EngineUtils.h"
 #include "FallEnemy.h"
+#include "FallArt.h"
+#include "NiagaraSystem.h"
 #include "FallCombatData.h"
 #include "FreefallGameMode.h"
 #include "FallMenu.h"
@@ -349,9 +351,8 @@ void AFallPlayer::UpdateHold(float Dt)
 void AFallPlayer::BuildOutfit()
 {
 	Super::BuildOutfit();
-	// Compact SMG in the right hand: barrel along the hand.
-	Gun = AttachProp("hand_r", TEXT("Cube"), FVector(14.f, 2.f, -3.f), FRotator::ZeroRotator, FVector(26.f, 5.f, 8.f), FLinearColor(0.02f, 0.02f, 0.022f), 0.4f, 0.7f);
-	AttachProp("hand_r", TEXT("Cube"), FVector(8.f, 2.f, -10.f), FRotator::ZeroRotator, FVector(4.f, 4.f, 10.f), FLinearColor(0.02f, 0.02f, 0.022f), 0.5f, 0.3f);
+	ArmWeapon();
+	Gun = WeaponMesh;
 }
 
 AFallEnemy* AFallPlayer::FindEnemyInReach(float Range) const
@@ -379,7 +380,8 @@ void AFallPlayer::Fire()
 	--Ammo;
 	FireCooldown = W->FireInterval;
 	LastShot = GetWorld()->GetTimeSeconds();
-	const FVector Muzzle = Gun ? Gun->GetComponentTransform().TransformPosition(FVector(60.f, 0.f, 0.f)) : Mesh->GetSocketLocation("hand_r");
+	const FVector Muzzle = MuzzleLocation();
+	TriggerPull = 1.f;
 	const float Cone = FMath::Lerp(W->SpreadDeg.X, W->SpreadDeg.Y, FMath::Clamp(Spread, 0.f, 1.f));
 	Spread = FMath::Min(1.f, Spread + W->SpreadPerShot);
 	const FVector Dir = FMath::VRandCone((AimPoint - Muzzle).GetSafeNormal(), FMath::DegreesToRadians(Cone));
@@ -395,6 +397,8 @@ void AFallPlayer::Fire()
 	{
 		FX->Tracer(Muzzle, Impact, W->TracerColor, 2.5f);
 		FX->Flash(Muzzle, 35.f, FLinearColor(1.f, 0.7f, 0.35f), 0.04f);
+		const UFallArtData* Art = UFallArtData::Get();
+		FX->SpawnOn(Art->MuzzleFlash.LoadSynchronous(), WeaponMesh, Muzzle, 0.6f, MuzzleForward().Rotation());
 	}
 	FallSynth::Play(this, FallSynth::EKind::Gunshot, FVector::ZeroVector, 0.55f, FMath::FRandRange(0.95f, 1.05f));
 	AddRecoil(1.f);
@@ -416,7 +420,11 @@ void AFallPlayer::Fire()
 	else
 	{
 		// Metal: shield, debris, turret. Ricochet sparks, no damage.
-		if (FX) FX->Sparks(Impact, Hit.ImpactNormal, 10, FLinearColor(1.f, 0.75f, 0.4f), 2200.f);
+		if (FX)
+		{
+			FX->Sparks(Impact, Hit.ImpactNormal, 10, FLinearColor(1.f, 0.75f, 0.4f), 2200.f);
+			FX->SpawnOn(UFallArtData::Get()->ImpactMetal.LoadSynchronous(), Hit.GetComponent(), Impact, 1.f, Hit.ImpactNormal.Rotation());
+		}
 		FallSynth::Play(this, FMath::RandBool() ? FallSynth::EKind::Ricochet : FallSynth::EKind::HitMetal, Impact, 0.8f, 1.3f);
 		if (AFallDebris* D = Cast<AFallDebris>(Hit.GetActor())) D->Mover->Spin += FRotator(FMath::FRandRange(-6.f, 6.f), FMath::FRandRange(-6.f, 6.f), 0.f);
 	}
@@ -426,6 +434,8 @@ void AFallPlayer::StartReload()
 {
 	if (ReloadLeft > 0.f || Ammo >= UFallWeaponData::Resolve(Weapon)->MagazineSize) return;
 	ReloadLeft = UFallWeaponData::Resolve(Weapon)->ReloadTime;
+	StartReloadMotion(ReloadLeft);
+	FallSynth::Play(this, FallSynth::EKind::Grab, FVector::ZeroVector, 0.6f, 1.6f);
 	FallSynth::Play(this, FallSynth::EKind::Grab, FVector::ZeroVector, 0.4f, 1.6f);
 }
 
@@ -462,7 +472,7 @@ void AFallPlayer::TryKick()
 void AFallPlayer::GiveParachute()
 {
 	bHasParachute = true;
-	if (!ParachutePack) ParachutePack = AttachProp("spine_03", TEXT("Cube"), FVector(0, -19.f, 2.f), FRotator::ZeroRotator, FVector(36.f, 18.f, 46.f), FLinearColor(1.f, 0.62f, 0.02f), 0.5f, 0.f);
+	if (!ParachutePack) ParachutePack = AttachMesh("spine_03", UFallArtData::Get()->ParachuteContainer.LoadSynchronous(), FVector(0, -14.f, 2.f), FRotator(0.f, 180.f, 0.f), 1.05f);
 }
 
 void AFallPlayer::TakeParachute(AFallEnemy* Target)
@@ -537,12 +547,6 @@ void AFallPlayer::UpdateCombat(float Dt)
 	const bool bAiming = (InputNow.bAim || InputNow.bFire || Now - LastShot < 1.2f) && ReloadLeft <= 0.f && RobTime < 0.f;
 	Control.bAim = bAiming;
 	Control.AimAt = AimPoint;
-	// Reload: the left hand comes to the gun.
-	if (ReloadLeft > 0.f && Gun)
-	{
-		Control.HandTarget[0] = Gun->GetComponentLocation();
-		Control.HandWeight[0] = 1.f;
-	}
 
 	// Kick impact.
 	if (KickTime >= 0.f && !bKickApplied && KickTime >= KickImpactTime())

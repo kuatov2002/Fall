@@ -29,6 +29,8 @@ struct FFallAnimInput
 	FVector AccelCS = FVector::ZeroVector; // cm/s^2
 	FVector HitCS = FVector::ZeroVector;   // accumulated push direction * strength since last frame
 	float Recoil = 0.f;                    // accumulated since last frame
+	bool bGunInRight = false;              // fingers wrap the grip, index finger along the frame
+	float TriggerPull = 0.f;               // 0..1, index finger on the trigger
 	int32 Seed = 0;
 	FVector WindDirCS = FVector(0.f, 0.f, 1.f); // where the air pushes the limbs, component space
 	float Trail = 0.f;                          // 0..1, limbs trail with the air (limp bodies)
@@ -86,6 +88,7 @@ private:
 	TArray<FTransform> RefLocal, RefCS, OutCS;
 	TArray<ERole> Roles;
 	TArray<uint8> RoleIndex; // limb index or spine/neck order
+	TArray<bool> IndexFinger;
 	TArray<FQuat> SpringQ;
 	TArray<FVector> SpringW;
 	TArray<bool> SpringValid;
