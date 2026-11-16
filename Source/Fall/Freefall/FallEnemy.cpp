@@ -314,7 +314,7 @@ bool AFallEnemy::ReceiveHit(const FVector& PushDirWorld, float Strength, float D
 		return false;
 	}
 	const bool bKilled = Super::ReceiveHit(PushDirWorld, Strength, Damage);
-	Flash(FLinearColor(1.f, 0.95f, 0.9f), 2.f + Strength); // white, so it never merges with the harness colours
+	Flash(FLinearColor(1.f, 0.95f, 0.9f), 1.f + 0.5f * Strength); // white and short, so the tumble stays readable
 	if (bKilled) Knockout(PushDirWorld);
 	return bKilled;
 }
@@ -490,8 +490,11 @@ void AFallEnemy::TickShooter(float Dt, AFallPlayer* P)
 		}
 		break;
 	case EFallEnemyState::Telegraph:
-		// 0.6 s: gun up, red laser locked on the player. The aim during the burst lags behind this.
-		Control.bAim = true;
+		// 0.6 s: the head turns first, then the gun arm comes up and the body braces (spreads to brake); the red laser
+		// locks on the player. The aim during the burst lags behind this.
+		Control.bAim = StateTime > 0.15f;
+		Control.Dive = -0.6f;
+		if (StateTime < Dt * 1.5f) AddImpulse(-ToP.GetSafeNormal(), 0.6f);
 		Control.AimAt = LaggedAim;
 		SetLaser(StateTime > 0.05f, Muzzle(), Muzzle() + (LaggedAim - Muzzle()).GetSafeNormal() * FMath::Min((LaggedAim - Muzzle()).Size() + 400.f, 6000.f));
 		if (StateTime >= Data->TelegraphTime)
@@ -725,7 +728,10 @@ void AFallEnemy::TickWingsuiter(float Dt, AFallPlayer* P)
 	case EFallEnemyState::Telegraph:
 	{
 		// 1.5 s warning: rising whistle and a bright trail while it swings onto the attack line.
-		if (!bWhistled) { FallSynth::Play(this, FallSynth::EKind::Whistle, GetActorLocation(), 1.4f); bWhistled = true; }
+		if (!bWhistled) { FallSynth::Play(this, FallSynth::EKind::Whistle, GetActorLocation(), 1.4f); bWhistled = true; AddImpulse(FVector::UpVector, 1.f); }
+		// Tucks the wings to dive onto the attack line, then spreads them again for the pass.
+		Control.Override = "Wingsuit";
+		Control.OverrideTarget = 1.f - 0.6f * FMath::Sin(PI * FMath::Clamp(StateTime / Data->TelegraphTime, 0.f, 1.f));
 		const float A = FMath::Clamp(StateTime / Data->TelegraphTime, 0.f, 1.f);
 		NewRel = FMath::Lerp(PassStartRel, PassFrom, A * A * (3.f - 2.f * A));
 		if (StateTime >= Data->TelegraphTime) { State = EFallEnemyState::Pass; StateTime = 0.f; ShotsLeft = Data->BurstCount * 2; ShotTimer = 0.25f; }

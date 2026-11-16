@@ -295,7 +295,7 @@ void AFallDirector::Tick(float Dt)
 		if (DeathTime < 0.f)
 		{
 			DeathTime = 0.f;
-			UGameplayStatics::SetGlobalTimeDilation(this, 0.25f);
+			UGameplayStatics::SetGlobalTimeDilation(this, 0.4f);
 		}
 		DeathTime += FApp::GetDeltaTime();
 		if (DeathTime > 0.45f) JumpTo(Checkpoint);

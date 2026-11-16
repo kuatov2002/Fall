@@ -339,8 +339,8 @@ void AFallPlayer::UpdateHold(float Dt)
 	Control.Dive = 0.f;
 	Control.Bank = 0.f;
 	const FVector Lat = (N ^ UpHint).GetSafeNormal();
-	Control.HandTarget[0] = A + UpHint * 38.f - Lat * 30.f + N * 3.f;
-	Control.HandTarget[1] = A + UpHint * 38.f + Lat * 30.f + N * 3.f;
+	Control.HandTarget[0] = A + UpHint * 52.f - Lat * 32.f + N * 3.f;
+	Control.HandTarget[1] = A + UpHint * 52.f + Lat * 32.f + N * 3.f;
 	Control.HandWeight[0] = 1.f;
 	Control.HandWeight[1] = Control.bAim ? 0.f : 1.f;
 }
@@ -477,7 +477,7 @@ bool AFallPlayer::ReceiveHit(const FVector& PushDirWorld, float Strength, float 
 {
 	if (bDied) return false;
 	const bool bDead = Super::ReceiveHit(PushDirWorld, Strength, Damage);
-	Flash(FLinearColor(1.f, 0.12f, 0.05f), 0.6f + 0.3f * Strength); // the player's own damage reads red, on the rim
+	Flash(FLinearColor(1.f, 0.8f, 0.45f), 0.6f + 0.3f * Strength); // warm white on the rim: never the enemies' red
 	LastDamage = GetWorld()->GetTimeSeconds();
 	if (Damage > 0.f) if (UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this)) FW->NoteEvent("PlayerHit");
 	DamagePulse = FMath::Min(1.f, DamagePulse + Damage / 30.f + 0.25f);

@@ -81,10 +81,7 @@ AFallBody::AFallBody()
 	Add("spine_04", FVector(-6, 15, 0), FVector(0, 0.3f, -1), FVector(1, 0, 0), 3, 6.f, FVector2D(3.f, 2.5f), Webbing, 10000.f);
 	// Suit fabric flapping on the forearms and shins: the cheapest strong cue of airspeed.
 	const FLinearColor Fabric(0.03f, 0.045f, 0.09f);
-	Add("lowerarm_l", FVector(0, -3.5f, -4), FVector(0, -0.6f, -0.8f), FVector(0, 0, 1), 4, 4.f, FVector2D(12.f, 3.f), Fabric, 160000.f, 0.6f);
-	Add("lowerarm_r", FVector(0, -3.5f, -4), FVector(0, -0.6f, -0.8f), FVector(0, 0, 1), 4, 4.f, FVector2D(12.f, 3.f), Fabric, 160000.f, 0.6f);
-	Add("calf_l", FVector(0, -4.5f, -8), FVector(0, -0.7f, -0.7f), FVector(0, 0, 1), 4, 4.f, FVector2D(14.f, 3.f), Fabric, 160000.f, 0.6f);
-	Add("calf_r", FVector(0, -4.5f, -8), FVector(0, -0.7f, -0.7f), FVector(0, 0, 1), 4, 4.f, FVector2D(14.f, 3.f), Fabric, 160000.f, 0.6f);
+	(void)Fabric;
 	// Bridle trailing from the empty harness.
 	Add("spine_03", FVector(0, -16, 4), FVector(0, -0.3f, -1), FVector(1, 0, 0), 7, 8.f, FVector2D(3.f, 2.f), FLinearColor(0.2f, 0.075f, 0.02f), 80000.f, 0.1f);
 }
@@ -246,7 +243,7 @@ bool AFallBody::ReceiveHit(const FVector& PushDirWorld, float Strength, float Da
 	const FVector ChestLocal = AttQ.RotateVector(FVector::UpVector);
 	AttW += (ChestLocal ^ LocalPush) * Strength * 5.f;
 	Health = FMath::Max(0.f, Health - Damage);
-	Flash(FLinearColor(1.f, 0.95f, 0.9f), 2.f + Strength);
+	Flash(FLinearColor(1.f, 0.95f, 0.9f), 1.f + 0.5f * Strength);
 	return Health <= 0.f;
 }
 
@@ -326,8 +323,9 @@ void AFallBody::UpdateBody(float Dt)
 	if (OverridePose == "Limp" && OverrideWeight > 0.5f)
 	{
 		// A limp body tumbles slowly; the limbs trail behind on their soft springs.
-		LimpSpin += Dt * 0.7f;
-		AttGoal = FQuat(FVector(0.3f, 1.f, 0.2f).GetSafeNormal(), LimpSpin) * AttGoal;
+		LimpSpin += Dt * (1.6f + 1.2f * FMath::PerlinNoise1D(GetWorld()->GetTimeSeconds() * 0.7f + Seed));
+		const FVector Axis(0.4f + FMath::PerlinNoise1D(LimpSpin * 0.3f + Seed), 1.f, 0.3f * FMath::PerlinNoise1D(LimpSpin * 0.2f + Seed + 3.f));
+		AttGoal = FQuat(Axis.GetSafeNormal(), LimpSpin) * AttGoal;
 	}
 	SpringQuat(AttGoal, AttQ, AttW, FMath::Lerp(Attitude.X, 0.6f, Canopy), FMath::Lerp(Attitude.Y, 0.2f, Canopy), Dt);
 	AttW = AttW.GetClampedToMaxSize(4.5f); // no 120-degree flips in a few frames

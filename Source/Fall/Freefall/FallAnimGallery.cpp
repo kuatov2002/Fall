@@ -134,7 +134,7 @@ void AFallAnimGallery::StartEntry(int32 Index, int32 InAngle)
 		Prop->SetWorldRotation(FRotationMatrix::MakeFromZX(-Front, UpB).Rotator());
 		Prop->SetWorldScale3D(FVector(1.4f, 1.2f, 0.2f));
 		Prop->SetVisibility(true);
-		GrabPoint = Center - Front * 12.f + UpB * 38.f;
+		GrabPoint = Center - Front * 12.f + UpB * 52.f;
 	}
 	PlaceCamera();
 	ApplyEntry(0.f);
@@ -172,7 +172,7 @@ void AFallAnimGallery::ApplyEntry(float Dt)
 	else if (Name.Contains(TEXT("10_grab")))
 	{
 		C.Override = "Grab"; C.OverrideTarget = 1.f;
-		const FVector Lat = FVector::RightVector * 24.f;
+		const FVector Lat = FVector::RightVector * 30.f;
 		const FVector Slip(FMath::PerlinNoise1D(t * 1.3f) * 3.f, FMath::PerlinNoise1D(t * 1.1f + 5.f) * 3.f, 0.f);
 		C.HandTarget[0] = GrabPoint - Lat + Slip; C.HandTarget[1] = GrabPoint + Lat - Slip;
 		C.HandWeight[0] = C.HandWeight[1] = 1.f;

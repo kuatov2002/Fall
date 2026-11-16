@@ -200,7 +200,7 @@ public:
 
 	/** Kick timeline, seconds: chamber (anticipation), strike, recover. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Kick")
-	FVector KickTimes = FVector(0.36f, 0.1f, 0.55f);
+	FVector KickTimes = FVector(0.36f, 0.14f, 0.55f);
 
 	const FFallPose* FindPose(FName Name) const;
 	static const UFallAnimData* Resolve(const UFallAnimData* Maybe) { return Maybe ? Maybe : ::GetDefault<UFallAnimData>(); }
