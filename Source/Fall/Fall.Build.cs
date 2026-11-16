@@ -18,13 +18,18 @@ public class Fall : ModuleRules
 			"StateTreeModule",
 			"GameplayStateTreeModule",
 			"UMG",
-			"Slate"
+			"Slate",
+			"SlateCore",
+			"ProceduralMeshComponent",
+			"Json",
+			"AudioExtensions"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });
 
 		PublicIncludePaths.AddRange(new string[] {
 			"Fall",
+			"Fall/Freefall",
 			"Fall/Variant_Platforming",
 			"Fall/Variant_Platforming/Animation",
 			"Fall/Variant_Combat",
