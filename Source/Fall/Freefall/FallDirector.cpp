@@ -30,8 +30,9 @@ AFallDirector::AFallDirector()
 	Canopy->SetUsingAbsoluteScale(true);
 	Canopy->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Canopy->SetVisibility(false);
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> Sphere(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
-	if (Sphere.Succeeded()) Canopy->SetStaticMesh(Sphere.Object);
+	// Ram-air canopy: a long rectangular wing.
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
+	if (Cube.Succeeded()) Canopy->SetStaticMesh(Cube.Object);
 }
 
 AFallDirector* AFallDirector::Get(const UObject* WorldContext)
@@ -58,7 +59,8 @@ void AFallDirector::BeginPlay()
 	if (UMaterialInterface* M = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_LitTwoSided.M_FF_LitTwoSided")))
 	{
 		UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(M, this);
-		MID->SetVectorParameterValue("Color", FLinearColor(1.f, 0.45f, 0.05f));
+		MID->SetVectorParameterValue("Color", FLinearColor(1.f, 0.4f, 0.04f));
+		MID->SetVectorParameterValue("Emissive", FLinearColor(0.35f, 0.1f, 0.01f)); // light through the fabric
 		Canopy->SetMaterial(0, MID);
 	}
 	for (UTextRenderComponent* L : Labels) if (L) L->SetVisibility(false);
@@ -125,6 +127,7 @@ void AFallDirector::JumpTo(float T)
 		P->ResetBody();
 		P->bHasParachute = false;
 		P->SetActorLocation(FVector::ZeroVector);
+		if (FParse::Param(FCommandLine::Get(), TEXT("FallGiveParachute"))) P->GiveParachute();
 		if (T <= 0.01f && bEventsEnabled)
 		{
 			// Falling out of the airship: starts almost at rest and accelerates.
@@ -304,14 +307,14 @@ void AFallDirector::Tick(float Dt)
 		const FVector Top = P->GetActorLocation() + FVector(0.f, 0.f, 750.f);
 		Canopy->SetWorldLocation(Top);
 		Canopy->SetWorldRotation(FRotator(0.f, P->GetActorRotation().Yaw, 0.f));
-		Canopy->SetWorldScale3D(FVector(9.f * Inf * Over, 6.f * Inf * Over, 1.8f * FMath::Max(Inf, 0.3f)));
+		Canopy->SetWorldScale3D(FVector(2.8f * FMath::Max(Inf, 0.3f) * Over, 8.5f * Inf * Over, 0.45f));
 		if (AFallFX* FX = AFallFX::Get(this))
 		{
 			int32* Lines = Risers;
 			const FVector Sh = P->Mesh->GetSocketLocation("spine_05");
 			for (int32 i = 0; i < 4; ++i)
 			{
-				const FVector Edge = Top + FRotator(0.f, P->GetActorRotation().Yaw + 45.f + 90.f * i, 0.f).RotateVector(FVector(420.f * Inf, 0.f, -60.f));
+				const FVector Edge = Top + FRotator(0.f, P->GetActorRotation().Yaw, 0.f).RotateVector(FVector((i % 2 ? 120.f : -120.f) * Inf, (i < 2 ? 400.f : -400.f) * Inf, -25.f));
 				Lines[i] = FX->Beam(Lines[i], Sh, Edge, FLinearColor(0.15f, 0.15f, 0.15f), 0.8f, true);
 			}
 		}

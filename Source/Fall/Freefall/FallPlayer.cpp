@@ -436,6 +436,12 @@ void AFallPlayer::TryKick()
 	FallSynth::Play(this, FallSynth::EKind::Whoosh, FVector::ZeroVector, 0.6f, 1.3f);
 }
 
+void AFallPlayer::GiveParachute()
+{
+	bHasParachute = true;
+	if (!ParachutePack) ParachutePack = AttachProp("spine_03", TEXT("Cube"), FVector(0, -19.f, 2.f), FRotator::ZeroRotator, FVector(36.f, 18.f, 46.f), FLinearColor(1.f, 0.62f, 0.02f), 0.5f, 0.f);
+}
+
 void AFallPlayer::TakeParachute(AFallEnemy* Target)
 {
 	RobTarget = Target;
@@ -539,9 +545,8 @@ void AFallPlayer::UpdateCombat(float Dt)
 		}
 		if (RobTime > 0.7f && T && !bHasParachute)
 		{
-			bHasParachute = true;
+			GiveParachute();
 			T->Rob((T->GetActorLocation() - GetActorLocation()).GetSafeNormal());
-			ParachutePack = AttachProp("spine_03", TEXT("Cube"), FVector(0, -19.f, 2.f), FRotator::ZeroRotator, FVector(36.f, 18.f, 46.f), FLinearColor(1.f, 0.62f, 0.02f), 0.5f, 0.f);
 			PendingHit += -(T->GetActorLocation() - GetActorLocation()).GetSafeNormal() * 1.5f;
 			HitStop(0.08f);
 			AddShake(0.6f);
@@ -597,6 +602,16 @@ void AFallPlayer::UpdateCamera(float Dt)
 	CameraArm->SocketOffset = M->CameraOffset * FMath::Lerp(1.f, Dolly, 0.5f) + FVector(0.f, 0.f, CamAccelOffset);
 	// Head-down, the body hangs below the pelvis pivot: aim at its middle.
 	CameraArm->TargetOffset = FVector(0.f, 0.f, -45.f * FMath::Max(Dive, 0.f));
+	// Under the canopy the camera pulls back and up so the canopy and the risers are in frame.
+	CanopyCam = FMath::FInterpTo(CanopyCam, bCanopy ? 1.f : 0.f, Dt, 1.2f);
+	if (CanopyCam > 0.001f)
+	{
+		// Low and behind, looking up: the body in the lower third, the canopy above it.
+		CameraArm->SetWorldRotation(FRotator(FMath::Lerp(CR.Pitch + DiveBias, 25.f, CanopyCam), CR.Yaw, 0.f) + Shake);
+		CameraArm->TargetArmLength *= FMath::Lerp(1.f, 2.8f, CanopyCam);
+		CameraArm->TargetOffset += FVector(0.f, 0.f, 200.f * CanopyCam);
+		Camera->SetFieldOfView(Camera->FieldOfView + 10.f * CanopyCam);
+	}
 	if (GetWorld()->GetTimeSeconds() > 1.f) Camera->PostProcessSettings.MotionBlurAmount = 0.2f;
 
 	if (WindWave)

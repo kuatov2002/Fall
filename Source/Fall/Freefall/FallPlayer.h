@@ -105,6 +105,8 @@ public:
 	void StartReload();
 	void TryKick();
 	void TakeParachute(AFallEnemy* Target);
+	/** Puts the parachute container on the back (finisher, review runs). */
+	void GiveParachute();
 	/** Enemy closest to a direction within range, for kicks and finishers. */
 	AFallEnemy* FindEnemyInReach(float Range) const;
 	virtual void Tick(float DeltaSeconds) override;
@@ -147,4 +149,5 @@ protected:
 	float FovKick = 0.f;
 	float ArmPunch = 0.f;
 	float ArmPunchTarget = 0.f;
+	float CanopyCam = 0.f;
 };

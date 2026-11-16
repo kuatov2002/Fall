@@ -239,6 +239,7 @@ void AFallReview::Tick(float DeltaSeconds)
 		for (; SeenEvents < FW->Events.Num(); ++SeenEvents)
 		{
 			const FFallEventRecord& E = FW->Events[SeenEvents];
+			if (SeenEvents == 0) LastEventTime = E.Time;
 			LongestGap = FMath::Max(LongestGap, E.Time - LastEventTime);
 			LastEventTime = E.Time;
 			TSharedPtr<FJsonObject> O = MakeShared<FJsonObject>();

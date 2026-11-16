@@ -366,6 +366,15 @@ void AFallEnemy::Tick(float Dt)
 	AFallPlayer* P = FW ? FW->Player.Get() : nullptr;
 	StateTime += Dt;
 
+	// Once the player has the parachute the fight is over: the escort breaks off and leaves.
+	if (P && P->bHasParachute && GetType() != EFallEnemyType::Target && State != EFallEnemyState::Dead)
+	{
+		NextAction = 1000.f;
+		Passes = 3;
+		Dist = 30000.f;
+		if (State == EFallEnemyState::Telegraph || State == EFallEnemyState::Burst) { State = EFallEnemyState::Cooldown; SetLaser(false, FVector::ZeroVector, FVector::ZeroVector); }
+		ShotsLeft = 0;
+	}
 	if (P && GetType() != EFallEnemyType::Wingsuiter)
 	{
 		switch (GetType())
