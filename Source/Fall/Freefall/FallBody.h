@@ -52,6 +52,10 @@ struct FFallBodyControl
 	/** Extra yaw of the body relative to the actor (kick facing), degrees. */
 	float YawOffset = 0.f;
 
+	/** Full attitude relative to the actor (facing a debris surface), blended in by AttitudeWeight. */
+	FQuat AttitudeOverride = FQuat::Identity;
+	float AttitudeWeight = 0.f;
+
 	/** World velocity of the air relative to the body, cm/s (falling body: air flows up). */
 	FVector AirVelocity = FVector(0, 0, 5500.f);
 };
@@ -81,10 +85,23 @@ public:
 
 	/** Suit tint, readable silhouette colour. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fall")
-	FLinearColor SuitColor = FLinearColor(0.12f, 0.16f, 0.2f);
+	FLinearColor SuitColor = FLinearColor(0.012f, 0.02f, 0.05f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fall")
 	FLinearColor AccentColor = FLinearColor(1.f, 0.35f, 0.05f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fall")
+	FLinearColor HarnessColor = FLinearColor(0.02f, 0.02f, 0.022f);
+
+	/** Rim highlight that keeps the silhouette readable against snow and cloud. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fall")
+	FLinearColor RimColor = FLinearColor(0.55f, 0.7f, 1.f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fall")
+	float RimIntensity = 0.05f;
+
+	/** Attach a basic-shape prop to a bone. Offset and rotation are in body space of the reference pose (X right, Y front, Z up). */
+	UStaticMeshComponent* AttachProp(FName Bone, const TCHAR* Shape, const FVector& Offset, const FRotator& BodyRot, const FVector& Size, const FLinearColor& Color, float Roughness = 0.7f, float Metallic = 0.f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fall")
 	float MaxHealth = 100.f;
@@ -113,6 +130,7 @@ public:
 	float LookWeight = 0.f;
 	float HandWeight[2] = {0.f, 0.f};
 	float BodyPitch = 90.f;
+	float AttitudeOverrideWeight = 0.f;
 
 	virtual void Tick(float DeltaSeconds) override;
 
@@ -148,6 +166,12 @@ protected:
 
 	UPROPERTY()
 	TObjectPtr<UMaterialInstanceDynamic> FlashMID;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UStaticMeshComponent>> Props;
+
+	/** Builds the helmet and harness. Override to change the outfit. */
+	virtual void BuildOutfit();
 
 	FQuat AttQ = FQuat::Identity;
 	FVector AttW = FVector::ZeroVector;

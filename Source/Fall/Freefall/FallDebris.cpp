@@ -330,7 +330,7 @@ void AFallDebrisSpawner::Tick(float Dt)
 				FW->NoteEvent("DebrisHit");
 			}
 			D->Mover->VelocityH -= FVector(Push.X, Push.Y, 0.f) * 250.f / D->Mass;
-			D->Mover->Spin += FRotator(Rng.FRandRange(-40.f, 40.f), Rng.FRandRange(-40.f, 40.f), 0.f) / D->Mass;
+			D->Mover->Spin += FRotator(Rng.FRandRange(-40.f, 40.f), Rng.FRandRange(-40.f, 40.f), 0.f) * (1.f / D->Mass);
 			D->LastHit = Now;
 			if (AFallFX* FX = AFallFX::Get(this)) FX->Sparks(S, Push, 14, FLinearColor(1.f, 0.75f, 0.4f));
 			FallSynth::Play(this, FallSynth::EKind::HitMetal, S, 1.f, 1.f / FMath::Sqrt(D->Mass));

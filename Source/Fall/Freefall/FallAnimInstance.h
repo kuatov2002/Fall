@@ -89,6 +89,10 @@ private:
 	int32 Neck[3] = {INDEX_NONE, INDEX_NONE, INDEX_NONE};
 	FLimbRef Limbs[4]; // arm L, arm R, leg L, leg R
 	FVector PalmRef[2], CurlAxisRef[2];
+	float LagDive[3] = {0.f, 0.f, 0.f};
+	float LagBank[3] = {0.f, 0.f, 0.f};
+	bool bLagInit = false;
+	float LookReach = 1.f;
 };
 
 UCLASS(Transient, BlueprintType)

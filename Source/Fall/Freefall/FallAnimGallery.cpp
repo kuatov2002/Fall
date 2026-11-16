@@ -125,7 +125,7 @@ void AFallAnimGallery::StartEntry(int32 Index, int32 InAngle)
 		const FQuat Att(FVector::RightVector, FMath::DegreesToRadians(80.f));
 		const FVector Front = Att.RotateVector(FVector::ForwardVector);
 		const FVector UpB = Att.RotateVector(FVector::UpVector);
-		const FVector Center = UpB * 25.f + Front * 62.f;
+		const FVector Center = UpB * 25.f + Front * 50.f;
 		Prop->SetWorldLocation(Center);
 		Prop->SetWorldRotation(FRotationMatrix::MakeFromZX(-Front, UpB).Rotator());
 		Prop->SetWorldScale3D(FVector(1.4f, 1.2f, 0.2f));

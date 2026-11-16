@@ -10,6 +10,10 @@ class UCameraComponent;
 class UAudioComponent;
 class UFallWindWave;
 class UFallMovementData;
+class AFallDebris;
+class AFallEnemy;
+class UFallWeaponData;
+class UStaticMeshComponent;
 
 /** One frame of player intent. Filled by the input devices or by the review bot. */
 USTRUCT(BlueprintType)
@@ -44,6 +48,21 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fall")
 	TObjectPtr<UFallMovementData> Movement;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fall")
+	TObjectPtr<UFallWeaponData> Weapon;
+
+	/** Rounds left in the magazine; reload is automatic when empty. */
+	UPROPERTY(BlueprintReadOnly, Category = "Fall") int32 Ammo = 24;
+	UPROPERTY(BlueprintReadOnly, Category = "Fall") bool bHasParachute = false;
+	/** Under an open canopy (set by the director). */
+	UPROPERTY(BlueprintReadOnly, Category = "Fall") bool bCanopy = false;
+
+	/** Where the crosshair points in the world (updated every frame). */
+	FVector AimPoint = FVector::ZeroVector;
+
+	/** Called by the director to know a death happened. */
+	bool bDied = false;
+
 	/** Current virtual fall speed, m/s. */
 	UPROPERTY(BlueprintReadOnly, Category = "Fall") float FallSpeed = 55.f;
 
@@ -69,7 +88,24 @@ public:
 	/** Hit-stop: freeze time for a few frames on impact. */
 	void HitStop(float Seconds);
 
+	/** Debris piece the player holds, if any. */
+	TWeakObjectPtr<AFallDebris> Held;
+	bool IsHolding() const { return Held.IsValid(); }
+	void Grab(AFallDebris* Piece);
+	void Release();
+	void PushOff();
+	/** Best grabbable piece in reach, or null. */
+	AFallDebris* FindGrabbable() const;
+
 	virtual void ResetBody() override;
+	virtual bool ReceiveHit(const FVector& PushDirWorld, float Strength, float Damage) override;
+
+	void Fire();
+	void StartReload();
+	void TryKick();
+	void TakeParachute(AFallEnemy* Target);
+	/** Enemy closest to a direction within range, for kicks and finishers. */
+	AFallEnemy* FindEnemyInReach(float Range) const;
 	virtual void Tick(float DeltaSeconds) override;
 
 	bool Pressed(bool FFallInputFrame::*Field) const { return InputNow.*Field && !(InputPrev.*Field); }
@@ -79,6 +115,22 @@ protected:
 	void GatherInput(float Dt);
 	void UpdateMovement(float Dt);
 	void UpdateCamera(float Dt);
+	void UpdateHold(float Dt);
+	void UpdateCombat(float Dt);
+	virtual void BuildOutfit() override;
+
+	UPROPERTY() TObjectPtr<UStaticMeshComponent> Gun;
+	UPROPERTY() TObjectPtr<UStaticMeshComponent> ParachutePack;
+	TWeakObjectPtr<AFallEnemy> KickTarget;
+	TWeakObjectPtr<AFallEnemy> RobTarget;
+	float FireCooldown = 0.f;
+	float ReloadLeft = 0.f;
+	float Spread = 0.f;
+	float LastShot = -10.f;
+	float LastDamage = -10.f;
+	float DamagePulse = 0.f;
+	float RobTime = -1.f;
+	bool bKickApplied = false;
 
 	UPROPERTY() TObjectPtr<UFallWindWave> WindWave;
 
@@ -88,4 +140,7 @@ protected:
 	float PrevFallSpeed = 55.f;
 	float HitStopLeft = 0.f;
 	float YawVel = 0.f;
+	FVector HeldAnchorLocal = FVector::ZeroVector;
+	FVector HeldNormalLocal = FVector::UpVector;
+	float GrabCooldown = 0.f;
 };

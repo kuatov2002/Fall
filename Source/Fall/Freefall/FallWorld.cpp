@@ -56,6 +56,7 @@ void UFallMoverComponent::TickComponent(float DeltaTime, ELevelTick TickType, FA
 	AActor* Owner = GetOwner();
 	const UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this);
 	if (!Owner || !FW) return;
+	if (FallAccel > 0.f) FallSpeed = FMath::Min(FallSpeed + FallAccel * DeltaTime, TerminalSpeed);
 	const FVector Delta(VelocityH.X * DeltaTime, VelocityH.Y * DeltaTime, (FW->PlayerFallSpeed - FallSpeed) * DeltaTime);
 	Owner->AddActorWorldOffset(Delta);
 	if (!Spin.IsZero()) Owner->AddActorLocalRotation(Spin * DeltaTime);
@@ -276,7 +277,7 @@ void AFallSpeedField::BeginPlay()
 	{
 		UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(Add, this);
 		MID->SetVectorParameterValue("Color", FLinearColor(0.75f, 0.85f, 1.f));
-		MID->SetScalarParameterValue("Intensity", 1.3f);
+		MID->SetScalarParameterValue("Intensity", 1.6f);
 		Streaks->SetMaterial(0, MID);
 	}
 	StreakPos.SetNum(NumStreaks);
@@ -290,7 +291,7 @@ void AFallSpeedField::BeginPlay()
 	}
 	Streaks->AddInstances(Xf, false);
 
-	for (int32 i = 0; i < 24; ++i)
+	for (int32 i = 0; i < 48; ++i)
 	{
 		UStaticMeshComponent* C = NewObject<UStaticMeshComponent>(this);
 		C->SetStaticMesh(Plane);
@@ -339,23 +340,31 @@ void AFallSpeedField::Tick(float Dt)
 			P = FVector(FMath::Cos(A) * R, FMath::Sin(A) * R, -StreakHalfHeight + Rng.FRandRange(0.f, 400.f));
 		}
 		const float Dist = P.Size();
-		const float Thick = 0.006f + Dist * 0.0000045f;
+		const float Thick = 0.008f + Dist * 0.000006f;
 		Xf[i] = FTransform(Align, C + P, FVector(Thick, Thick, Len / 100.f));
 	}
 	Streaks->BatchUpdateInstancesTransforms(0, Xf, true, true);
 
 	// Cloud wisps rising past the camera.
-	NextPuff -= Dt * FMath::Max(FW->CloudDensity, 0.f) * FMath::Clamp(FW->PlayerFallSpeed / 5500.f, 0.5f, 1.8f);
+	NextPuff -= Dt * FMath::Max(FW->CloudDensity, 0.f) * FMath::Clamp(FW->PlayerFallSpeed / 5500.f, 0.85f, 1.8f);
 	if (NextPuff <= 0.f)
 	{
 		NextPuff = Rng.FRandRange(PuffInterval.X, PuffInterval.Y);
+		// A wisp is a small cluster of sprites; every third one passes right next to the camera.
+		const bool bClose = Rng.FRand() < 0.35f;
+		const float BaseSize = Rng.FRandRange(PuffSize.X, PuffSize.Y) * (bClose ? 0.5f : 1.f) * FMath::Lerp(1.f, 1.8f, FMath::Clamp(FW->CloudDensity - 1.f, 0.f, 1.f));
+		const float A0 = Rng.FRandRange(0.f, 2.f * PI);
+		const float R0 = bClose ? Rng.FRandRange(220.f, 600.f) : Rng.FRandRange(BaseSize * 0.3f + 400.f, 1600.f);
+		++ClusterId;
+		const FVector Center = C + FVector(FMath::Cos(A0) * R0, FMath::Sin(A0) * R0, -9000.f - Rng.FRandRange(0.f, 3000.f));
+		const int32 Count = Rng.RandRange(3, 5);
+		int32 Spawned = 0;
 		for (FPuff& P : Puffs)
 		{
 			if (P.bActive) continue;
-			const float Size = Rng.FRandRange(PuffSize.X, PuffSize.Y) * FMath::Lerp(1.f, 1.8f, FMath::Clamp(FW->CloudDensity - 1.f, 0.f, 1.f));
-			const float A = Rng.FRandRange(0.f, 2.f * PI);
-			const float R = Rng.FRandRange(Size * 0.4f + 300.f, 3200.f);
-			const FVector Pos = C + FVector(FMath::Cos(A) * R, FMath::Sin(A) * R, -9000.f - Rng.FRandRange(0.f, 3000.f));
+			if (Spawned >= Count) break;
+			const float Size = BaseSize * Rng.FRandRange(0.45f, 1.f);
+			const FVector Pos = Center + FVector(Rng.FRandRange(-0.5f, 0.5f) * BaseSize, Rng.FRandRange(-0.5f, 0.5f) * BaseSize, Rng.FRandRange(-0.8f, 0.8f) * BaseSize);
 			P.Comp->SetWorldLocation(Pos);
 			P.Comp->SetWorldScale3D(FVector(Size, Size * Rng.FRandRange(0.5f, 0.9f), 1.f) / 100.f);
 			P.Comp->SetVisibility(true);
@@ -369,7 +378,8 @@ void AFallSpeedField::Tick(float Dt)
 			}
 			P.bActive = true;
 			P.bCounted = false;
-			break;
+			P.Cluster = ClusterId;
+			++Spawned;
 		}
 	}
 	for (FPuff& P : Puffs)
@@ -384,8 +394,9 @@ void AFallSpeedField::Tick(float Dt)
 		if (!P.bCounted && D.Z > 0.f)
 		{
 			P.bCounted = true;
-			if (FVector2D(D.X, D.Y).Size() - P.Comp->GetComponentScale().X * 50.f < NearPassRadius)
+			if (FVector2D(D.X, D.Y).Size() - P.Comp->GetComponentScale().X * 50.f < NearPassRadius && P.Cluster != LastCountedCluster)
 			{
+				LastCountedCluster = P.Cluster;
 				++NearPasses;
 				++FW->NearPasses;
 				FW->NoteEvent("NearPass");

@@ -6,6 +6,10 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
 #include "DrawDebugHelpers.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
 
 namespace
 {
@@ -66,8 +70,9 @@ AFallBody::AFallBody()
 		Straps->Straps.Add(D);
 	};
 	const FLinearColor Webbing(0.03f, 0.03f, 0.035f);
-	// Scarf from the back of the neck: the brightest moving thing on the silhouette.
-	Add("neck_01", FVector(0, -9, -2), FVector(0, -0.7f, -0.7f), FVector(1, 0, 0), 5, 8.f, FVector2D(8.f, 4.f), FLinearColor(1.f, 0.3f, 0.04f), 30000.f, 0.35f);
+	// Goggle strap tails from the back of the helmet: small accent that whips in the wind.
+	Add("head", FVector(4, -11, 8), FVector(0.2f, -0.5f, -0.85f), FVector(1, 0, 0), 4, 6.f, FVector2D(3.f, 2.f), FLinearColor(1.f, 0.3f, 0.04f), 30000.f, 0.3f);
+	Add("head", FVector(-4, -11, 8), FVector(-0.2f, -0.5f, -0.85f), FVector(1, 0, 0), 4, 6.f, FVector2D(3.f, 2.f), FLinearColor(1.f, 0.3f, 0.04f), 30000.f, 0.3f);
 	// Leg strap tails.
 	Add("thigh_l", FVector(5, 9, -12), FVector(0, 0.2f, -1), FVector(1, 0, 0), 4, 7.f, FVector2D(3.5f, 3.f), Webbing, 12000.f);
 	Add("thigh_r", FVector(-5, 9, -12), FVector(0, 0.2f, -1), FVector(1, 0, 0), 4, 7.f, FVector2D(3.5f, 3.f), Webbing, 12000.f);
@@ -80,6 +85,7 @@ AFallBody::AFallBody()
 
 void AFallBody::BeginPlay()
 {
+	if (!AnimData) AnimData = LoadObject<UFallAnimData>(nullptr, TEXT("/Game/Freefall/Data/DA_FallAnim.DA_FallAnim"));
 	Super::BeginPlay();
 	Health = MaxHealth;
 	Seed = FMath::Rand() & 0xffff;
@@ -102,19 +108,27 @@ void AFallBody::BeginPlay()
 		AI->AnimData = AnimData;
 	}
 
-	for (int32 m = 0; m < Mesh->GetNumMaterials(); ++m)
+	// Jumpsuit: replace the mannequin plastic with a matte fabric colour per slot.
+	if (UMaterialInterface* Lit = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Lit.M_FF_Lit")))
 	{
-		if (UMaterialInstanceDynamic* MID = Mesh->CreateDynamicMaterialInstance(m))
+		for (int32 m = 0; m < Mesh->GetNumMaterials(); ++m)
 		{
-			MID->SetVectorParameterValue("Paint Tint", SuitColor);
+			UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(Lit, this);
+			MID->SetVectorParameterValue("Color", m == 0 ? SuitColor : SuitColor * 1.35f);
+			MID->SetScalarParameterValue("Roughness", 0.8f);
+			MID->SetScalarParameterValue("Metallic", 0.f);
+			Mesh->SetMaterial(m, MID);
 		}
 	}
 	if (UMaterialInterface* Add = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Additive.M_FF_Additive")))
 	{
 		FlashMID = UMaterialInstanceDynamic::Create(Add, this);
-		FlashMID->SetScalarParameterValue("Intensity", 0.f);
-		Mesh->SetOverlayMaterial(FlashMID);
+		FlashMID->SetScalarParameterValue("Intensity", RimIntensity);
+		FlashMID->SetScalarParameterValue("Rim", 1.f);
+		FlashMID->SetVectorParameterValue("Color", RimColor);
+		if (!FParse::Param(FCommandLine::Get(), TEXT("FallNoRim"))) Mesh->SetOverlayMaterial(FlashMID);
 	}
+	BuildOutfit();
 	if (UMaterialInterface* Lit = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_LitTwoSided.M_FF_LitTwoSided")))
 	{
 		if (Straps->Straps.Num() > 0) Straps->Straps[0].Color = AccentColor;
@@ -123,6 +137,55 @@ void AFallBody::BeginPlay()
 	PrevMeshRot = Mesh->GetComponentQuat();
 	PrevAirVel = Control.AirVelocity;
 	AttQ = FQuat(FVector::RightVector, FMath::DegreesToRadians(90.f));
+}
+
+UStaticMeshComponent* AFallBody::AttachProp(FName Bone, const TCHAR* Shape, const FVector& Offset, const FRotator& BodyRot, const FVector& Size, const FLinearColor& Color, float Roughness, float Metallic)
+{
+	USkeletalMesh* SK = Mesh->GetSkeletalMeshAsset();
+	UStaticMesh* SM = LoadObject<UStaticMesh>(nullptr, *FString::Printf(TEXT("/Engine/BasicShapes/%s.%s"), Shape, Shape));
+	if (!SK || !SM) return nullptr;
+	const int32 B = SK->GetRefSkeleton().FindBoneIndex(Bone);
+	if (B < 0) return nullptr;
+	TArray<FTransform> RefCS;
+	FVector Basis[3];
+	FallComputeRefCS(SK->GetRefSkeleton(), RefCS, Basis);
+	const FTransform& T = RefCS[B];
+	const FVector OffCS = Basis[0] * Offset.X + Basis[1] * Offset.Y + Basis[2] * Offset.Z;
+	// Body frame as a rotation in component space, then the prop's own rotation inside it.
+	const FQuat BodyFrame = FRotationMatrix::MakeFromXY(Basis[0], Basis[1]).ToQuat();
+	const FQuat RotCS = BodyFrame * BodyRot.Quaternion();
+	UStaticMeshComponent* C = NewObject<UStaticMeshComponent>(this);
+	C->SetStaticMesh(SM);
+	C->SetupAttachment(Mesh, Bone);
+	C->SetRelativeLocation(T.InverseTransformPosition(T.GetLocation() + OffCS));
+	C->SetRelativeRotation(T.GetRotation().Inverse() * RotCS);
+	C->SetRelativeScale3D(Size / 100.f);
+	C->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	C->RegisterComponent();
+	if (UMaterialInterface* Lit = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Lit.M_FF_Lit")))
+	{
+		UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(Lit, this);
+		MID->SetVectorParameterValue("Color", Color);
+		MID->SetScalarParameterValue("Roughness", Roughness);
+		MID->SetScalarParameterValue("Metallic", Metallic);
+		C->SetMaterial(0, MID);
+	}
+	Props.Add(C);
+	return C;
+}
+
+void AFallBody::BuildOutfit()
+{
+	// Helmet with goggles, harness: chest strap, shoulder straps, leg loops, an empty container frame on the back.
+	AttachProp("head", TEXT("Sphere"), FVector(0, -1.5f, 9.5f), FRotator::ZeroRotator, FVector(23.f, 26.f, 23.f), HarnessColor * 2.f, 0.35f, 0.2f);
+	AttachProp("head", TEXT("Cube"), FVector(0, 9.5f, 6.f), FRotator::ZeroRotator, FVector(17.f, 4.f, 5.f), FLinearColor(0.9f, 0.45f, 0.08f), 0.15f, 0.6f);
+	AttachProp("spine_04", TEXT("Cube"), FVector(0, 14.f, 2.f), FRotator::ZeroRotator, FVector(30.f, 3.f, 4.f), HarnessColor);
+	for (int32 s = -1; s <= 1; s += 2)
+	{
+		AttachProp("spine_05", TEXT("Cube"), FVector(s * 9.f, 0.f, 9.f), FRotator(0.f, 0.f, 0.f), FVector(4.f, 30.f, 3.f), HarnessColor);
+		AttachProp(s < 0 ? "thigh_l" : "thigh_r", TEXT("Cylinder"), FVector(0, 0, -8.f), FRotator::ZeroRotator, FVector(19.f, 19.f, 4.f), HarnessColor);
+	}
+	AttachProp("spine_03", TEXT("Cube"), FVector(0, -15.f, 2.f), FRotator::ZeroRotator, FVector(28.f, 5.f, 36.f), HarnessColor * 1.5f, 0.6f, 0.1f);
 }
 
 void AFallBody::ResetBody()
@@ -162,7 +225,7 @@ bool AFallBody::ReceiveHit(const FVector& PushDirWorld, float Strength, float Da
 	// Rotate the whole body away from the hit: torque from a push at the chest.
 	const FVector LocalPush = GetActorQuat().Inverse().RotateVector(PushDirWorld.GetSafeNormal());
 	const FVector ChestLocal = AttQ.RotateVector(FVector::UpVector);
-	AttW += (ChestLocal ^ LocalPush) * Strength * 3.f;
+	AttW += (ChestLocal ^ LocalPush) * Strength * 5.f;
 	Health = FMath::Max(0.f, Health - Damage);
 	Flash(FLinearColor(1.f, 0.15f, 0.05f), 2.f + Strength);
 	return Health <= 0.f;
@@ -221,7 +284,18 @@ void AFallBody::UpdateBody(float Dt)
 	const FQuat AttTarget = FQuat(FVector::UpVector, FMath::DegreesToRadians(Control.YawOffset))
 		* FQuat(FVector::ForwardVector, FMath::DegreesToRadians(Roll))
 		* FQuat(FVector::RightVector, FMath::DegreesToRadians(BodyPitch));
-	SpringQuat(AttTarget, AttQ, AttW, Attitude.X, Attitude.Y, Dt);
+	Follow(AttitudeOverrideWeight, Control.AttitudeWeight, 5.f);
+	const FQuat AttFinal = AttitudeOverrideWeight > 0.001f ? FQuat::Slerp(AttTarget, Control.AttitudeOverride, AttitudeOverrideWeight) : AttTarget;
+	// Under a canopy the body hangs like a pendulum: soft, underdamped, with a slow sway.
+	const float Canopy = OverridePose == "Canopy" ? OverrideWeight : 0.f;
+	FQuat AttGoal = AttFinal;
+	if (Canopy > 0.f)
+	{
+		const float T = GetWorld()->GetTimeSeconds();
+		AttGoal = FQuat(FVector::ForwardVector, FMath::DegreesToRadians(7.f * Canopy * FMath::PerlinNoise1D(T * 0.35f + Seed)))
+			* FQuat(FVector::RightVector, FMath::DegreesToRadians(6.f * Canopy * FMath::PerlinNoise1D(T * 0.3f + Seed + 5.f))) * AttFinal;
+	}
+	SpringQuat(AttGoal, AttQ, AttW, FMath::Lerp(Attitude.X, 0.9f, Canopy), FMath::Lerp(Attitude.Y, 0.18f, Canopy), Dt);
 	BodyPivot->SetRelativeRotation(AttQ);
 
 	const FTransform MeshT = Mesh->GetComponentTransform();
@@ -258,8 +332,10 @@ void AFallBody::UpdateBody(float Dt)
 	if (FlashMID)
 	{
 		FlashAmount = FMath::FInterpTo(FlashAmount, 0.f, Dt, 9.f);
-		FlashMID->SetScalarParameterValue("Intensity", FlashAmount);
-		FlashMID->SetVectorParameterValue("Color", FlashColor);
+		const float Fl = FMath::Clamp(FlashAmount, 0.f, 1.f);
+		FlashMID->SetScalarParameterValue("Intensity", RimIntensity + FlashAmount);
+		FlashMID->SetScalarParameterValue("Rim", 1.f - Fl * 0.7f);
+		FlashMID->SetVectorParameterValue("Color", FMath::Lerp(RimColor, FlashColor, Fl));
 	}
 
 	if (bDrawTrails)

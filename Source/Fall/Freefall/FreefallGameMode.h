@@ -33,4 +33,9 @@ public:
 	float HitPulse = 0.f;
 	float KillPulse = 0.f;
 	bool bVisible = true;
+
+	/** Full-screen fade (restart cut, impact, landing). FadeSpeed > 0 fades out to clear, < 0 fades in to solid. */
+	float FadeAlpha = 0.f;
+	float FadeSpeed = 2.f;
+	FLinearColor FadeColor = FLinearColor::Black;
 };

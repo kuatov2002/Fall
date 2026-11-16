@@ -15,6 +15,10 @@
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "EngineUtils.h"
+#include "FallEnemy.h"
+#include "FallDebris.h"
+#include "FallDirector.h"
+#include "Camera/CameraComponent.h"
 
 AFallReview::AFallReview()
 {
@@ -49,8 +53,95 @@ void AFallReview::BeginPlay()
 	}
 }
 
+void AFallReview::BotFull(float Dt, FFallInputFrame& Out)
+{
+	// A player-like bot for the whole fall: flies a base pattern, reacts to enemies, debris and the chase.
+	AFallPlayer* P = Cast<AFallPlayer>(UGameplayStatics::GetPlayerPawn(this, 0));
+	UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this);
+	if (!P || !FW) return;
+	BotClock += Dt;
+	const FVector PP = P->GetActorLocation();
+	const FVector CamLoc = P->Camera->GetComponentLocation();
+	const FRotator CamRot = P->Camera->GetComponentRotation();
+
+	// Base pattern: alternate belly, dive and brake so every stance shows up.
+	const float Cycle = FMath::Fmod(BotClock, 14.f);
+	Out.Dive = Cycle < 6.f ? 0.f : (Cycle < 9.f ? 1.f : (Cycle < 11.f ? -1.f : 0.f));
+	Out.Slide = FMath::Sin(BotClock * 0.45f) > 0.6f ? 1.f : (FMath::Sin(BotClock * 0.45f) < -0.6f ? -1.f : 0.f);
+
+	AFallEnemy* Target = nullptr;
+	AFallEnemy* Nearest = nullptr;
+	float NearestD = 4500.f;
+	bool bThreat = false;
+	for (TActorIterator<AFallEnemy> It(GetWorld()); It; ++It)
+	{
+		if (It->State == EFallEnemyState::Dead || It->State == EFallEnemyState::Robbed) continue;
+		if (It->GetType() == EFallEnemyType::Target) Target = *It;
+		const float D = FVector::Dist(It->GetActorLocation(), PP);
+		if (D < NearestD && It->GetType() != EFallEnemyType::Target) { NearestD = D; Nearest = *It; }
+		if (It->IsTelegraphing() && D < 3500.f) bThreat = true;
+	}
+
+	// The chase: dive at the parachute carrier, steer onto it, shoot it, take the parachute when it is stunned.
+	const bool bChase = Target && Target->State != EFallEnemyState::Approach && Target->State != EFallEnemyState::Hold;
+	AFallEnemy* Aim = Nearest;
+	if (bChase && !P->bHasParachute)
+	{
+		Aim = Target;
+		const FVector To = Target->GetActorLocation() - PP;
+		Out.Dive = To.Z < -300.f ? 1.f : (To.Z > 300.f ? -1.f : 0.f);
+		const FVector Local = P->GetActorQuat().UnrotateVector(FVector(To.X, To.Y, 0.f));
+		Out.Slide = FMath::Clamp(Local.Y / 600.f, -1.f, 1.f);
+		if (Target->CanBeRobbed() && To.Size() < 380.f) Out.bKick = !LastBot.bKick;
+	}
+	if (P->bHasParachute) { Out.Dive = 0.f; Out.Slide = 0.f; Aim = nullptr; }
+
+	// Aim: turn the camera onto the chosen enemy, fire when the crosshair is on it.
+	if (Aim)
+	{
+		const FVector AimAt = Aim->GetActorLocation() + Aim->GetVelocity() * 0.05f;
+		const FRotator Want = (AimAt - CamLoc).Rotation();
+		const float DYaw = FRotator::NormalizeAxis(Want.Yaw - CamRot.Yaw);
+		const float DPitch = FRotator::NormalizeAxis(Want.Pitch - CamRot.Pitch);
+		Out.Look = FVector2D(FMath::Clamp(DYaw * 6.f * Dt, -6.f, 6.f), FMath::Clamp(DPitch * 6.f * Dt, -4.f, 4.f));
+		const float Err = FMath::Sqrt(DYaw * DYaw + DPitch * DPitch);
+		Out.bFire = Err < 4.f && FVector::Dist(Aim->GetActorLocation(), PP) < 4000.f;
+		if (FVector::Dist(Aim->GetActorLocation(), PP) < 380.f && !Aim->CanBeRobbed()) Out.bKick = !LastBot.bKick;
+	}
+	else
+	{
+		Out.Look = FVector2D(FMath::Sin(BotClock * 0.3f) * 10.f * Dt, -CamRot.Pitch * 0.5f * Dt - 3.f * Dt);
+	}
+
+	// Cover: grab a piece when an attack is announced, push off a couple of seconds later.
+	if (P->IsHolding())
+	{
+		HoldTime += Dt;
+		Out.Dive = 0.f;
+		Out.Slide = 0.f;
+		if (HoldTime > 2.5f) Out.bPush = !LastBot.bPush;
+	}
+	else
+	{
+		HoldTime = 0.f;
+		if ((bThreat || FMath::Fmod(BotClock, 17.f) < 0.1f) && P->FindGrabbable() && !bChase) Out.bGrab = !LastBot.bGrab;
+	}
+	if (P->Ammo <= 0) Out.bReload = true;
+}
+
 void AFallReview::BotInput(float Dt, FFallInputFrame& Out)
 {
+	if (Bot == TEXT("full"))
+	{
+		BotFull(Dt, Out);
+		if (bBursts && !bPerf && (Out.Dive != LastBot.Dive) && BurstLeft <= 0)
+		{
+			BurstLeft = 10; BurstIndex = 0;
+			BurstName = FString::Printf(TEXT("t%05.1f_dive%+d"), T, (int32)Out.Dive);
+		}
+		LastBot = Out;
+		return;
+	}
 	// Scripted fall for the core movement review. Times in seconds since the start.
 	struct FSeg { float T0; float Dive; float Slide; float YawRate; float PitchRate; };
 	static const FSeg Core[] = {
@@ -157,6 +248,19 @@ void AFallReview::Tick(float DeltaSeconds)
 		}
 	}
 
+	// Key moments get a burst too.
+	if (FW && bBursts && !bPerf)
+	{
+		static const FName Key[] = {"EnemySpawn", "Grab", "PushOff", "Kick", "Kill", "DebrisHit", "ParachuteTaken", "CanopyOpen", "Crash", "TargetStunned", "OneShot", "PlayerDeath"};
+		for (; SeenBurstEvents < FW->Events.Num(); ++SeenBurstEvents)
+		{
+			const FName N = FW->Events[SeenBurstEvents].Name;
+			for (const FName& K : Key)
+			{
+				if (N == K && BurstLeft <= 0) { BurstLeft = 10; BurstIndex = 0; BurstName = FString::Printf(TEXT("t%05.1f_%s"), T, *N.ToString()); }
+			}
+		}
+	}
 	// Screenshots: bursts around transitions take priority, then the regular interval.
 	if (BurstLeft > 0)
 	{

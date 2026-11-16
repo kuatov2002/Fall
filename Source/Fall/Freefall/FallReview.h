@@ -21,6 +21,7 @@ protected:
 	virtual void BeginPlay() override;
 
 	void BotInput(float Dt, FFallInputFrame& Out);
+	void BotFull(float Dt, FFallInputFrame& Out);
 	void Shot(const FString& Name);
 	void WriteMetrics();
 
@@ -50,4 +51,7 @@ protected:
 	int32 SeenEvents = 0;
 	TArray<TSharedPtr<class FJsonValue>> EventLog;
 	bool bWritten = false;
+	float HoldTime = 0.f;
+	float BotClock = 0.f;
+	int32 SeenBurstEvents = 0;
 };

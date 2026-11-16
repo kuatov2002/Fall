@@ -95,6 +95,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fall")
 	FVector VelocityH = FVector::ZeroVector;
 
+	/** Gravity on the own fall speed until TerminalSpeed (chunks that start at rest), cm/s^2. 0 = constant speed. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fall")
+	float FallAccel = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fall")
+	float TerminalSpeed = 6000.f;
+
 	/** Spin, degrees per second. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fall")
 	FRotator Spin = FRotator::ZeroRotator;
@@ -149,12 +156,12 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<UInstancedStaticMeshComponent> Streaks;
 
 	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumStreaks = 220;
-	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D StreakRadius = FVector2D(180.f, 2600.f);
-	UPROPERTY(EditAnywhere, Category = "Fall") float StreakHalfHeight = 3500.f;
+	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D StreakRadius = FVector2D(110.f, 1700.f);
+	UPROPERTY(EditAnywhere, Category = "Fall") float StreakHalfHeight = 2600.f;
 	/** Streak length = fall speed * this, seconds of motion blur. */
 	UPROPERTY(EditAnywhere, Category = "Fall") float StreakBlur = 0.045f;
 	/** Seconds between cloud wisps at density 1. */
-	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D PuffInterval = FVector2D(0.25f, 0.6f);
+	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D PuffInterval = FVector2D(0.3f, 0.85f);
 	/** Wisp size range, cm. */
 	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D PuffSize = FVector2D(400.f, 1800.f);
 	/** Distance at which a wisp counts as passing close to the camera, cm. */
@@ -175,10 +182,13 @@ protected:
 		bool bActive = false;
 		bool bCounted = false;
 		float Opacity = 0.5f;
+		int32 Cluster = 0;
 	};
 	TArray<FPuff> Puffs;
 	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> PuffComps;
 	TArray<FVector> StreakPos;
 	float NextPuff = 0.f;
+	int32 ClusterId = 0;
+	int32 LastCountedCluster = -1;
 	FRandomStream Rng;
 };

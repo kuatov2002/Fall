@@ -297,14 +297,12 @@ void FFallAnimProxy::SolveLimb(FLimbRef& L, const FFallLimb& P, const FVector Ax
 	}
 
 	// Hinge from the two directions, never bending the joint backwards.
+	// The hinge is the plane of the two segments; the upper bone twists to put its own hinge there, so the joint
+	// always flexes the anatomical way. Only a nearly straight limb borrows the swing of the reference hinge.
 	const FVector Fallback = FQuat::FindBetweenNormals(L.DirU, DU).RotateVector(L.Hinge);
 	FVector Raw = DU ^ DL;
-	if ((Raw | Fallback) <= 0.f)
-	{
-		DL = DU;
-		Raw = FVector::ZeroVector;
-	}
-	const float A = Smooth((Raw.Size() - 0.05f) / 0.25f);
+	if ((Raw | Fallback) < 0.f && Raw.Size() < 0.2f) Raw = FVector::ZeroVector; // tiny reverse bend: treat as straight
+	const float A = Smooth((Raw.Size() - 0.03f) / 0.2f);
 	FVector H = FMath::Lerp(Fallback, Raw.GetSafeNormal(), A);
 	H = (H - DU * (H | DU)).GetSafeNormal(UE_SMALL_NUMBER, Fallback);
 
@@ -344,7 +342,31 @@ bool FFallAnimProxy::Evaluate(FPoseContext& Output)
 	PendingDt = 0.f;
 	Clock += Dt;
 
-	FFallPose P = FallComputeTargetPose(*D, In);
+	// Layered timing: the head leads stance changes, arms and spine follow, legs trail behind.
+	static const float Tau[3] = {0.03f, 0.15f, 0.3f};
+	if (!bLagInit)
+	{
+		for (int32 g = 0; g < 3; ++g) { LagDive[g] = In.Dive; LagBank[g] = In.Bank; }
+		bLagInit = true;
+	}
+	for (int32 g = 0; g < 3; ++g)
+	{
+		const float K = 1.f - FMath::Exp(-Dt / Tau[g]);
+		LagDive[g] += (In.Dive - LagDive[g]) * K;
+		LagBank[g] += (In.Bank - LagBank[g]) * K;
+	}
+	FFallAnimInput Lag = In;
+	Lag.Dive = LagDive[1]; Lag.Bank = LagBank[1];
+	FFallPose P = FallComputeTargetPose(*D, Lag);
+	Lag.Dive = LagDive[2]; Lag.Bank = LagBank[2];
+	const FFallPose PLegs = FallComputeTargetPose(*D, Lag);
+	Lag.Dive = LagDive[0]; Lag.Bank = LagBank[0];
+	const FFallPose PHead = FallComputeTargetPose(*D, Lag);
+	P.LegL = PLegs.LegL;
+	P.LegR = PLegs.LegR;
+	// Chin tucks while the head is ahead of the body going into the dive, lifts first coming out.
+	P.HeadPitch = PHead.HeadPitch - 45.f * FMath::Clamp((LagDive[0] - LagDive[1]) * 2.5f, -1.f, 1.f);
+	P.Arch += 10.f * FMath::Clamp((LagDive[1] - LagDive[2]) * 2.5f, -1.f, 1.f);
 
 	// Lean from body acceleration (m/s^2): pressed into an arch when slowing, bent away from lateral pushes.
 	const FVector AccM = In.AccelCS / 100.f;
@@ -357,7 +379,8 @@ bool FFallAnimProxy::Evaluate(FPoseContext& Output)
 		const FVector L = In.LookDirCS.GetSafeNormal(UE_SMALL_NUMBER, Basis[kFront]);
 		const float Y = FMath::RadiansToDegrees(FMath::Atan2(-(L | Basis[kRight]), (L | Basis[kFront])));
 		const float Lim = D->LookYawPitchLimit.X;
-		const float W = FMath::Clamp(In.LookWeight, 0.f, 1.f);
+		LookReach = FMath::SmoothStep(150.f, 105.f, FMath::Abs(Y));
+		const float W = FMath::Clamp(In.LookWeight, 0.f, 1.f) * LookReach;
 		LookYaw = FMath::Clamp(Y, -Lim - 40.f, Lim + 40.f) * W;
 		if (In.AimWeight > 0.f)
 		{
@@ -402,7 +425,7 @@ bool FFallAnimProxy::Evaluate(FPoseContext& Output)
 		{
 			const FQuat T = FQuat::Slerp(FQuat::Identity, SpineTotal, (RI + 1) / 5.f) * RefCS[i].GetRotation();
 			const FFallBoneGroupTuning& G = D->Group(EFallBoneGroup::Spine);
-			if (SpringValid[i]) SpringW[i] += (GustKick * 0.4f + HitAxis * (0.4f + 0.15f * RI));
+			if (SpringValid[i]) SpringW[i] += (GustKick * 0.4f + HitAxis * (0.4f + 0.15f * RI) + Chest[kUp] * In.Recoil * 1.2f);
 			Rot = Spring(i, Noise(i, FMath::Lerp(G.NoiseDeg.X, G.NoiseDeg.Y, In.Wind) * NoiseMul) * T, G, StiffMul, Dt);
 			if (RI == 4)
 			{
@@ -415,7 +438,7 @@ bool FFallAnimProxy::Evaluate(FPoseContext& Output)
 		{
 			static const float Share[3] = {0.3f, 0.6f, 1.f};
 			const FVector L = In.LookDirCS.GetSafeNormal(UE_SMALL_NUMBER, Chest[kFront]);
-			const float W = FMath::Clamp(In.LookWeight, 0.f, 1.f);
+			const float W = FMath::Clamp(In.LookWeight, 0.f, 1.f) * LookReach;
 			const float Yaw = FMath::Clamp(FMath::RadiansToDegrees(FMath::Atan2(-(L | Chest[kRight]), (L | Chest[kFront]))), -D->LookYawPitchLimit.X, D->LookYawPitchLimit.X);
 			const float Pit = FMath::Clamp(FMath::RadiansToDegrees(FMath::Atan2((L | Chest[kUp]), FVector2D((L | Chest[kRight]), (L | Chest[kFront])).Size())), -D->LookYawPitchLimit.Y, D->LookYawPitchLimit.Y);
 			const float FYaw = Yaw * W * Share[RI];
@@ -447,7 +470,7 @@ bool FFallAnimProxy::Evaluate(FPoseContext& Output)
 			if (SpringValid[i])
 			{
 				SpringW[i] += GustKick * 1.2f + HitAxis * 1.4f;
-				if (L.bArm && L.bRight && In.Recoil > 0.f) SpringW[i] += (L.TU ^ Chest[kUp]).GetSafeNormal() * -In.Recoil * 6.f;
+				if (L.bArm && L.bRight && In.Recoil > 0.f) SpringW[i] += (L.TU ^ Chest[kUp]).GetSafeNormal() * -In.Recoil * 14.f;
 			}
 			Rot = Spring(i, Noise(i, FMath::Lerp(G.NoiseDeg.X, G.NoiseDeg.Y, In.Wind) * NoiseMul) * T, G, StiffMul * (bKickLeg ? 3.f : 1.f), Dt);
 			break;
@@ -476,7 +499,11 @@ bool FFallAnimProxy::Evaluate(FPoseContext& Output)
 			const FVector DirNow = LowerDelta.RotateVector(L.DirL);
 			const FQuat T = FQuat(DirNow, FMath::DegreesToRadians(L.Twist)) * FQuat(HingeNow, FMath::DegreesToRadians(L.Flex)) * Inherit.GetRotation();
 			const FFallBoneGroupTuning& G = D->Group(EFallBoneGroup::Extremity);
-			if (SpringValid[i]) SpringW[i] += GustKick * 2.f;
+			if (SpringValid[i])
+			{
+				SpringW[i] += GustKick * 2.f;
+				if (L.bArm && L.bRight && In.Recoil > 0.f) SpringW[i] += (L.TL ^ Chest[kUp]).GetSafeNormal() * -In.Recoil * 22.f;
+			}
 			Rot = Spring(i, Noise(i, FMath::Lerp(G.NoiseDeg.X, G.NoiseDeg.Y, In.Wind) * NoiseMul) * T, G, StiffMul, Dt);
 			break;
 		}

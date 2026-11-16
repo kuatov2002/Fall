@@ -3,10 +3,15 @@
 #include "FallWorld.h"
 #include "FallReview.h"
 #include "FallAnimGallery.h"
+#include "FallDebris.h"
+#include "FallFX.h"
+#include "FallDirector.h"
+#include "EngineUtils.h"
 #include "Engine/Canvas.h"
 #include "Engine/World.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "Misc/App.h"
 
 AFreefallGameMode::AFreefallGameMode()
 {
@@ -41,8 +46,14 @@ void AFreefallGameMode::StartPlay()
 	{
 		W->SpawnActor<AFallPlanet>(AFallPlanet::StaticClass(), FTransform::Identity, P);
 		W->SpawnActor<AFallSpeedField>(AFallSpeedField::StaticClass(), FTransform::Identity, P);
+		W->SpawnActor<AFallFX>(AFallFX::StaticClass(), FTransform::Identity, P);
+		W->SpawnActor<AFallDebrisSpawner>(AFallDebrisSpawner::StaticClass(), FTransform::Identity, P);
 	}
 	Super::StartPlay();
+	if (!IsGallery() && !AFallDirector::Get(this))
+	{
+		W->SpawnActor<AFallDirector>(AFallDirector::StaticClass(), FTransform::Identity, P);
+	}
 
 	FString Dummy;
 	if (!IsGallery() && FParse::Value(FCommandLine::Get(), TEXT("FallReview="), Dummy))
@@ -54,8 +65,16 @@ void AFreefallGameMode::StartPlay()
 void AFallHUD::DrawHUD()
 {
 	Super::DrawHUD();
-	if (!Canvas || !bVisible) return;
-	const float Dt = GetWorld()->GetDeltaSeconds();
+	if (!Canvas) return;
+	const float Dt = FMath::Min(FApp::GetDeltaTime(), 0.1);
+	FadeAlpha = FMath::Clamp(FadeAlpha - FadeSpeed * Dt, 0.f, 1.f);
+	if (FadeAlpha > 0.001f)
+	{
+		FLinearColor C = FadeColor;
+		C.A = FadeAlpha;
+		DrawRect(C, 0.f, 0.f, Canvas->ClipX, Canvas->ClipY);
+	}
+	if (!bVisible || FadeAlpha > 0.6f) return;
 	Spread = FMath::FInterpTo(Spread, 0.f, Dt, 8.f);
 	HitPulse = FMath::FInterpTo(HitPulse, 0.f, Dt, 10.f);
 	KillPulse = FMath::FInterpTo(KillPulse, 0.f, Dt, 5.f);

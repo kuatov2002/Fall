@@ -51,6 +51,12 @@ def out(m, node, prop, o=''):
 
 
 def finish(m):
+    # Without usage flags an uncooked -game run silently falls back to the default material.
+    for flag in ('used_with_skeletal_mesh', 'used_with_instanced_static_meshes', 'used_with_niagara_sprites', 'used_with_niagara_meshes', 'used_with_niagara_ribbons'):
+        try:
+            m.set_editor_property(flag, True)
+        except Exception:
+            pass
     mel.recompile_material(m)
 
 

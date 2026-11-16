@@ -166,15 +166,15 @@ public:
 
 	/** High noise octave frequency at zero and full airspeed, Hz (buffeting). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise")
-	FVector2D FlutterHz = FVector2D(2.5f, 7.f);
+	FVector2D FlutterHz = FVector2D(3.f, 9.f);
 
 	/** Share of the noise amplitude carried by the high octave. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise")
-	float FlutterShare = 0.3f;
+	float FlutterShare = 0.35f;
 
 	/** Random wind gusts per second at full airspeed. Each kicks the springs. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise")
-	float GustsPerSecond = 0.7f;
+	float GustsPerSecond = 1.2f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise")
 	float GustStrength = 1.4f;
@@ -266,7 +266,7 @@ public:
 	FVector2D FOV = FVector2D(80.f, 100.f);
 	/** Extra downward camera pitch in the dive, degrees. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
-	float DivePitchBias = -26.f;
+	float DivePitchBias = -14.f;
 	/** Camera shake rotation amplitude at belly and at full dive, degrees. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
 	FVector2D ShakeDeg = FVector2D(0.12f, 0.75f);
