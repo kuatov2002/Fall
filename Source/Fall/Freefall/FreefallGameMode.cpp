@@ -84,11 +84,11 @@ void AFallHUD::DrawHUD()
 	const float Gap = (7.f + Spread * 14.f) * S;
 	const float Len = 9.f * S;
 	const FLinearColor Col = FMath::Lerp(FLinearColor(1.f, 1.f, 1.f, 0.85f), FLinearColor(1.f, 0.25f, 0.1f, 1.f), FMath::Max(HitPulse, KillPulse));
-	const float Th = 2.f * S;
+	const float Th = 2.5f * S;
 	auto Line = [&](FVector2D A, FVector2D B)
 	{
-		// Dark outline keeps the crosshair readable against white clouds.
-		DrawLine(A.X + 1, A.Y + 1, B.X + 1, B.Y + 1, FLinearColor(0, 0, 0, 0.5f), Th + 1.f);
+		// Dark underlay keeps the crosshair readable against white clouds.
+		DrawLine(A.X, A.Y, B.X, B.Y, FLinearColor(0, 0, 0, 0.45f), Th + 2.5f * S);
 		DrawLine(A.X, A.Y, B.X, B.Y, Col, Th);
 	};
 	Line(C + FVector2D(Gap, 0), C + FVector2D(Gap + Len, 0));

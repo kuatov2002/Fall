@@ -116,4 +116,8 @@ public:
 
 	/** Builds the shipped 3-minute design. */
 	void BuildDefault();
+
+	/** Editor button: replace the events with the shipped design. */
+	UFUNCTION(CallInEditor, BlueprintCallable, Category = "Sequence")
+	void ResetToShippedDesign() { BuildDefault(); MarkPackageDirty(); }
 };

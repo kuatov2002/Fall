@@ -87,11 +87,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fall")
 	FLinearColor SuitColor = FLinearColor(0.012f, 0.02f, 0.05f);
 
+	/** Faint red pulse at low health. */
+	void PulseLowHealth(float Amount) { LowPulse = FMath::Max(LowPulse, Amount); }
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fall")
 	FLinearColor AccentColor = FLinearColor(1.f, 0.35f, 0.05f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fall")
-	FLinearColor HarnessColor = FLinearColor(0.02f, 0.02f, 0.022f);
+	FLinearColor HarnessColor = FLinearColor(0.2f, 0.075f, 0.02f);
 
 	/** Rim highlight that keeps the silhouette readable against snow and cloud. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fall")
@@ -142,6 +145,9 @@ public:
 	/** Apply a hit: direction the push goes (world), strength ~0..3, damage. Returns true if this hit killed. */
 	virtual bool ReceiveHit(const FVector& PushDirWorld, float Strength, float Damage);
 
+	/** Push the body and its limbs without damage or flash (air shocks, canopy opening). */
+	void AddImpulse(const FVector& DirWorld, float Strength);
+
 	/** Muzzle recoil on the right arm. */
 	void AddRecoil(float Amount) { PendingRecoil += Amount; }
 
@@ -180,6 +186,7 @@ protected:
 	FVector PendingHit = FVector::ZeroVector;
 	float PendingRecoil = 0.f;
 	float FlashAmount = 0.f;
+	float LowPulse = 0.f;
 	FLinearColor FlashColor = FLinearColor::White;
 	TArray<FVector> Trails[4];
 	int32 Seed = 0;

@@ -42,7 +42,7 @@ struct FFallStrapDef
 
 	/** How strongly the airflow drags the strap, 1/s. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strap")
-	float Drag = 6.f;
+	float Drag = 4.f;
 
 	/** Flutter acceleration at full airspeed, cm/s^2. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strap")

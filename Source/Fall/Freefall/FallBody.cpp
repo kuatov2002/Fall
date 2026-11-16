@@ -71,8 +71,8 @@ AFallBody::AFallBody()
 	};
 	const FLinearColor Webbing(0.03f, 0.03f, 0.035f);
 	// Goggle strap tails from the back of the helmet: small accent that whips in the wind.
-	Add("head", FVector(4, -11, 8), FVector(0.2f, -0.5f, -0.85f), FVector(1, 0, 0), 4, 6.f, FVector2D(3.f, 2.f), FLinearColor(1.f, 0.3f, 0.04f), 30000.f, 0.3f);
-	Add("head", FVector(-4, -11, 8), FVector(-0.2f, -0.5f, -0.85f), FVector(1, 0, 0), 4, 6.f, FVector2D(3.f, 2.f), FLinearColor(1.f, 0.3f, 0.04f), 30000.f, 0.3f);
+	Add("head", FVector(4, -11, 8), FVector(0.2f, -0.5f, -0.85f), FVector(1, 0, 0), 4, 6.f, FVector2D(3.f, 2.f), FLinearColor(0.05f, 0.05f, 0.05f), 60000.f, 0.25f);
+	Add("head", FVector(-4, -11, 8), FVector(-0.2f, -0.5f, -0.85f), FVector(1, 0, 0), 4, 6.f, FVector2D(3.f, 2.f), FLinearColor(0.05f, 0.05f, 0.05f), 60000.f, 0.25f);
 	// Leg strap tails.
 	Add("thigh_l", FVector(5, 9, -12), FVector(0, 0.2f, -1), FVector(1, 0, 0), 4, 7.f, FVector2D(3.5f, 3.f), Webbing, 12000.f);
 	Add("thigh_r", FVector(-5, 9, -12), FVector(0, 0.2f, -1), FVector(1, 0, 0), 4, 7.f, FVector2D(3.5f, 3.f), Webbing, 12000.f);
@@ -178,7 +178,8 @@ void AFallBody::BuildOutfit()
 {
 	// Helmet with goggles, harness: chest strap, shoulder straps, leg loops, an empty container frame on the back.
 	AttachProp("head", TEXT("Sphere"), FVector(0, -1.5f, 9.5f), FRotator::ZeroRotator, FVector(23.f, 26.f, 23.f), HarnessColor * 2.f, 0.35f, 0.2f);
-	AttachProp("head", TEXT("Cube"), FVector(0, 9.5f, 6.f), FRotator::ZeroRotator, FVector(17.f, 4.f, 5.f), FLinearColor(0.9f, 0.45f, 0.08f), 0.15f, 0.6f);
+	AttachProp("head", TEXT("Cube"), FVector(0, 9.5f, 6.f), FRotator::ZeroRotator, FVector(17.f, 4.f, 5.f), FLinearColor(0.03f, 0.04f, 0.05f), 0.08f, 0.9f);
+	AttachProp("head", TEXT("Cube"), FVector(0, -1.5f, 21.f), FRotator::ZeroRotator, FVector(5.f, 22.f, 2.f), AccentColor, 0.5f, 0.f);
 	AttachProp("spine_04", TEXT("Cube"), FVector(0, 14.f, 2.f), FRotator::ZeroRotator, FVector(30.f, 3.f, 4.f), HarnessColor);
 	for (int32 s = -1; s <= 1; s += 2)
 	{
@@ -218,6 +219,13 @@ void AFallBody::Flash(const FLinearColor& Color, float Strength)
 	FlashAmount = FMath::Max(FlashAmount, Strength);
 }
 
+void AFallBody::AddImpulse(const FVector& DirWorld, float Strength)
+{
+	PendingHit += DirWorld.GetSafeNormal() * Strength;
+	const FVector LocalPush = GetActorQuat().Inverse().RotateVector(DirWorld.GetSafeNormal());
+	AttW += (AttQ.RotateVector(FVector::UpVector) ^ LocalPush) * Strength * 3.f;
+}
+
 bool AFallBody::ReceiveHit(const FVector& PushDirWorld, float Strength, float Damage)
 {
 	if (IsDead()) return false;
@@ -253,7 +261,7 @@ void AFallBody::UpdateBody(float Dt)
 	else
 	{
 		OverridePose = Control.Override;
-		Follow(OverrideWeight, Control.Override.IsNone() ? 0.f : Control.OverrideTarget, 4.f);
+		Follow(OverrideWeight, Control.Override.IsNone() ? 0.f : Control.OverrideTarget, OverridePose == "Canopy" ? 1.4f : 4.f);
 	}
 	Follow(AimWeight, Control.bAim ? 1.f : 0.f, 9.f);
 	Follow(LookWeight, Control.LookAt.IsZero() ? 0.f : 1.f, 4.f);
@@ -268,6 +276,7 @@ void AFallBody::UpdateBody(float Dt)
 	UFallAnimInstance* AI = Cast<UFallAnimInstance>(Mesh->GetAnimInstance());
 	FFallAnimInput Scratch;
 	FFallAnimInput& In = AI ? AI->Input : Scratch;
+	In.Wind = FMath::Clamp(Control.AirVelocity.Size() / 8800.f, 0.f, 1.f);
 	In.Dive = Dive;
 	In.Bank = Bank;
 	In.Wind = FMath::Clamp(Control.AirVelocity.Size() / 8800.f, 0.f, 1.f);
@@ -288,14 +297,19 @@ void AFallBody::UpdateBody(float Dt)
 	const FQuat AttFinal = AttitudeOverrideWeight > 0.001f ? FQuat::Slerp(AttTarget, Control.AttitudeOverride, AttitudeOverrideWeight) : AttTarget;
 	// Under a canopy the body hangs like a pendulum: soft, underdamped, with a slow sway.
 	const float Canopy = OverridePose == "Canopy" ? OverrideWeight : 0.f;
-	FQuat AttGoal = AttFinal;
+	// Constant small balance corrections of the whole body, stronger with airspeed.
+	const float Tw = GetWorld()->GetTimeSeconds();
+	const float Sway = 3.f * In.Wind;
+	FQuat AttGoal = FQuat(FVector::ForwardVector, FMath::DegreesToRadians(Sway * FMath::PerlinNoise1D(Tw * 0.45f + Seed * 0.1f)))
+		* FQuat(FVector::RightVector, FMath::DegreesToRadians(Sway * 0.7f * FMath::PerlinNoise1D(Tw * 0.38f + Seed * 0.1f + 17.f))) * AttFinal;
 	if (Canopy > 0.f)
 	{
 		const float T = GetWorld()->GetTimeSeconds();
 		AttGoal = FQuat(FVector::ForwardVector, FMath::DegreesToRadians(7.f * Canopy * FMath::PerlinNoise1D(T * 0.35f + Seed)))
-			* FQuat(FVector::RightVector, FMath::DegreesToRadians(6.f * Canopy * FMath::PerlinNoise1D(T * 0.3f + Seed + 5.f))) * AttFinal;
+			* FQuat(FVector::RightVector, FMath::DegreesToRadians(6.f * Canopy * FMath::PerlinNoise1D(T * 0.3f + Seed + 5.f))) * AttGoal;
 	}
-	SpringQuat(AttGoal, AttQ, AttW, FMath::Lerp(Attitude.X, 0.9f, Canopy), FMath::Lerp(Attitude.Y, 0.18f, Canopy), Dt);
+	SpringQuat(AttGoal, AttQ, AttW, FMath::Lerp(Attitude.X, 0.6f, Canopy), FMath::Lerp(Attitude.Y, 0.2f, Canopy), Dt);
+	AttW = AttW.GetClampedToMaxSize(4.5f); // no 120-degree flips in a few frames
 	BodyPivot->SetRelativeRotation(AttQ);
 
 	const FTransform MeshT = Mesh->GetComponentTransform();
@@ -332,10 +346,11 @@ void AFallBody::UpdateBody(float Dt)
 	if (FlashMID)
 	{
 		FlashAmount = FMath::FInterpTo(FlashAmount, 0.f, Dt, 9.f);
+		LowPulse = FMath::FInterpTo(LowPulse, 0.f, Dt, 3.f);
 		const float Fl = FMath::Clamp(FlashAmount, 0.f, 1.f);
-		FlashMID->SetScalarParameterValue("Intensity", RimIntensity + FlashAmount);
+		FlashMID->SetScalarParameterValue("Intensity", RimIntensity + FlashAmount + LowPulse * 2.f);
 		FlashMID->SetScalarParameterValue("Rim", 1.f - Fl * 0.7f);
-		FlashMID->SetVectorParameterValue("Color", FMath::Lerp(RimColor, FlashColor, Fl));
+		FlashMID->SetVectorParameterValue("Color", FMath::Lerp(FMath::Lerp(RimColor, FLinearColor(1.f, 0.1f, 0.05f), FMath::Clamp(LowPulse * 3.f, 0.f, 1.f)), FlashColor, Fl));
 	}
 
 	if (bDrawTrails)

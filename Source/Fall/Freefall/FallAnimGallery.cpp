@@ -125,12 +125,12 @@ void AFallAnimGallery::StartEntry(int32 Index, int32 InAngle)
 		const FQuat Att(FVector::RightVector, FMath::DegreesToRadians(80.f));
 		const FVector Front = Att.RotateVector(FVector::ForwardVector);
 		const FVector UpB = Att.RotateVector(FVector::UpVector);
-		const FVector Center = UpB * 25.f + Front * 50.f;
+		const FVector Center = UpB * 22.f + Front * 40.f;
 		Prop->SetWorldLocation(Center);
 		Prop->SetWorldRotation(FRotationMatrix::MakeFromZX(-Front, UpB).Rotator());
 		Prop->SetWorldScale3D(FVector(1.4f, 1.2f, 0.2f));
 		Prop->SetVisibility(true);
-		GrabPoint = Center - Front * 12.f + UpB * 30.f;
+		GrabPoint = Center - Front * 12.f + UpB * 38.f;
 	}
 	PlaceCamera();
 	ApplyEntry(0.f);
@@ -183,14 +183,14 @@ void AFallAnimGallery::ApplyEntry(float Dt)
 	{
 		if (Crossed(0.6f)) Body->ReceiveHit(FVector(0, 1, 0), 1.f, 0.f);
 		if (Crossed(1.5f)) Body->ReceiveHit(FVector(-1, 0, 0.3f), 1.4f, 0.f);
-		if (Crossed(2.3f)) Body->ReceiveHit(FVector(0, -0.3f, 1), 2.f, 0.f);
+		if (Crossed(2.3f)) Body->ReceiveHit(FVector(0.3f, -1.f, 0.2f), 1.8f, 0.f);
 	}
 	else if (Name.Contains(TEXT("13_wing"))) { C.Override = "Wingsuit"; C.OverrideTarget = 1.f; C.AirVelocity = FVector(-4000.f, 0, 3000.f); }
 	else if (Name.Contains(TEXT("14_limp"))) { C.Override = "Limp"; C.OverrideTarget = 1.f; }
 	else if (Name.Contains(TEXT("15_canopy")))
 	{
 		if (t > 0.5f) { C.Override = "Canopy"; C.OverrideTarget = 1.f; C.AirVelocity.Z = 600.f; }
-		if (Crossed(0.5f)) Body->ReceiveHit(FVector(0, 0, 1), 2.5f, 0.f);
+		if (Crossed(0.5f)) Body->AddImpulse(FVector(0, 0, 1), 2.5f);
 	}
 }
 

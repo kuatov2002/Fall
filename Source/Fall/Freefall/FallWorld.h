@@ -132,7 +132,7 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<UInstancedStaticMeshComponent> Trees;
 
 	/** Cloud deck bottom and thickness, km. */
-	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D CloudDeck = FVector2D(2.6f, 1.4f);
+	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D CloudDeck = FVector2D(1.9f, 0.7f);
 
 	/** Ground height function, metres. Valley floor around the landing zone at the origin. */
 	static float HeightAt(float Xm, float Ym);
@@ -155,13 +155,13 @@ public:
 
 	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<UInstancedStaticMeshComponent> Streaks;
 
-	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumStreaks = 220;
+	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumStreaks = 160;
 	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D StreakRadius = FVector2D(110.f, 1700.f);
 	UPROPERTY(EditAnywhere, Category = "Fall") float StreakHalfHeight = 2600.f;
 	/** Streak length = fall speed * this, seconds of motion blur. */
 	UPROPERTY(EditAnywhere, Category = "Fall") float StreakBlur = 0.045f;
 	/** Seconds between cloud wisps at density 1. */
-	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D PuffInterval = FVector2D(0.3f, 0.85f);
+	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D PuffInterval = FVector2D(0.3f, 0.7f);
 	/** Wisp size range, cm. */
 	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D PuffSize = FVector2D(400.f, 1800.f);
 	/** Distance at which a wisp counts as passing close to the camera, cm. */
@@ -183,6 +183,7 @@ protected:
 		bool bCounted = false;
 		float Opacity = 0.5f;
 		int32 Cluster = 0;
+		FVector BaseScale = FVector::OneVector;
 	};
 	TArray<FPuff> Puffs;
 	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> PuffComps;

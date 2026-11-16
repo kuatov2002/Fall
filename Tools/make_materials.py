@@ -99,6 +99,31 @@ mel.connect_material_expressions(sparam(m, 'Rim', 0.0, -900, 500), '', lerp, 'Al
 out(m, mul(m, mul(m, c, i, -600, 0), lerp, -350, 100), MP.MP_EMISSIVE_COLOR)
 finish(m)
 
+# Streak: additive, tapered at both ends and soft across, so speed lines read as motion, not rain.
+m = mk('M_FF_Streak')
+m.set_editor_property('shading_model', unreal.MaterialShadingModel.MSM_UNLIT)
+m.set_editor_property('blend_mode', unreal.BlendMode.BLEND_ADDITIVE)
+m.set_editor_property('two_sided', True)
+uv = e(m, unreal.MaterialExpressionTextureCoordinate, -1400, 0)
+def taper(chan, y):
+    mk1 = e(m, unreal.MaterialExpressionComponentMask, -1250, y, r=(chan == 'r'), g=(chan == 'g'), b=False, a=False)
+    mel.connect_material_expressions(uv, '', mk1, '')
+    two = mul(m, mk1, const(m, 2.0, -1250, y + 80), -1100, y)
+    sub = bin(m, unreal.MaterialExpressionSubtract, two, const(m, 1.0, -1100, y + 80), -950, y)
+    ab = e(m, unreal.MaterialExpressionAbs, -820, y)
+    mel.connect_material_expressions(sub, '', ab, '')
+    inv = e(m, unreal.MaterialExpressionOneMinus, -700, y)
+    mel.connect_material_expressions(ab, '', inv, '')
+    return inv
+t = mul(m, taper('r', 0), taper('g', 200), -550, 100)
+pw = e(m, unreal.MaterialExpressionPower, -420, 100)
+mel.connect_material_expressions(t, '', pw, 'Base')
+mel.connect_material_expressions(const(m, 1.5, -550, 220), '', pw, 'Exp')
+c = vparam(m, 'Color', unreal.LinearColor(0.8, 0.88, 1, 1), -600, -200)
+i = sparam(m, 'Intensity', 1.5, -600, -60)
+out(m, mul(m, mul(m, c, i, -400, -150), pw, -250, 0), MP.MP_EMISSIVE_COLOR)
+finish(m)
+
 # Soft sprite: cloud wisps, smoke, fire. Camera-facing plane, radial falloff times animated noise.
 m = mk('M_FF_Sprite')
 m.set_editor_property('shading_model', unreal.MaterialShadingModel.MSM_UNLIT)

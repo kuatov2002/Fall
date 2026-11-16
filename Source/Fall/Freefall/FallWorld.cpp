@@ -90,8 +90,8 @@ namespace
 		const FLinearColor Meadow(0.10f, 0.16f, 0.05f), Forest(0.035f, 0.07f, 0.03f), Rock(0.16f, 0.14f, 0.12f), Snow(0.82f, 0.85f, 0.9f), Scree(0.24f, 0.22f, 0.2f);
 		FLinearColor C = FMath::Lerp(Meadow, Forest, FMath::SmoothStep(380.f, 650.f, H + Noise * 120.f));
 		C = FMath::Lerp(C, Scree, FMath::SmoothStep(1500.f, 1900.f, H + Noise * 200.f));
-		C = FMath::Lerp(C, Rock, FMath::SmoothStep(0.45f, 0.75f, Slope));
-		C = FMath::Lerp(C, Snow, FMath::SmoothStep(2450.f, 2750.f, H + Noise * 250.f) * (1.f - FMath::SmoothStep(0.7f, 0.95f, Slope)));
+		C = FMath::Lerp(C, Rock * (0.75f + 0.5f * FMath::Abs(Noise)), FMath::SmoothStep(0.3f, 0.6f, Slope));
+		C = FMath::Lerp(C, Snow, FMath::SmoothStep(2050.f, 2350.f, H + Noise * 300.f) * (1.f - FMath::SmoothStep(0.55f, 0.85f, Slope)));
 		return C;
 	}
 }
@@ -210,7 +210,7 @@ void AFallPlanet::BuildTerrain()
 		C->CreateMeshSection_LinearColor(0, V, Tri, Nrm, UV, Col, {}, false);
 		if (Mat) C->SetMaterial(0, Mat);
 	};
-	Build(Terrain, 40000.f, 220, true);
+	Build(Terrain, 40000.f, 330, true);
 	Build(TerrainDetail, DetailHalf, 208, false);
 
 	// Forest on the valley slopes.
@@ -268,7 +268,7 @@ void AFallSpeedField::BeginPlay()
 	Super::BeginPlay();
 	UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
 	UStaticMesh* Sphere = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"));
-	UMaterialInterface* Add = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Additive.M_FF_Additive"));
+	UMaterialInterface* Add = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Streak.M_FF_Streak"));
 	UMaterialInterface* Cloud = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Sprite.M_FF_Sprite"));
 	UStaticMesh* Plane = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Plane.Plane"));
 
@@ -340,7 +340,7 @@ void AFallSpeedField::Tick(float Dt)
 			P = FVector(FMath::Cos(A) * R, FMath::Sin(A) * R, -StreakHalfHeight + Rng.FRandRange(0.f, 400.f));
 		}
 		const float Dist = P.Size();
-		const float Thick = 0.008f + Dist * 0.000006f;
+		const float Thick = 0.012f + Dist * 0.000008f;
 		Xf[i] = FTransform(Align, C + P, FVector(Thick, Thick, Len / 100.f));
 	}
 	Streaks->BatchUpdateInstancesTransforms(0, Xf, true, true);
@@ -351,12 +351,14 @@ void AFallSpeedField::Tick(float Dt)
 	{
 		NextPuff = Rng.FRandRange(PuffInterval.X, PuffInterval.Y);
 		// A wisp is a small cluster of sprites; every third one passes right next to the camera.
-		const bool bClose = Rng.FRand() < 0.35f;
+		const bool bClose = Rng.FRand() < 0.45f;
 		const float BaseSize = Rng.FRandRange(PuffSize.X, PuffSize.Y) * (bClose ? 0.5f : 1.f) * FMath::Lerp(1.f, 1.8f, FMath::Clamp(FW->CloudDensity - 1.f, 0.f, 1.f));
 		const float A0 = Rng.FRandRange(0.f, 2.f * PI);
 		const float R0 = bClose ? Rng.FRandRange(220.f, 600.f) : Rng.FRandRange(BaseSize * 0.3f + 400.f, 1600.f);
 		++ClusterId;
-		const FVector Center = C + FVector(FMath::Cos(A0) * R0, FMath::Sin(A0) * R0, -9000.f - Rng.FRandRange(0.f, 3000.f));
+		const float Depth = 9000.f + Rng.FRandRange(0.f, 3000.f);
+		const FVector Lead = FW->PlayerVelocityH * (Depth / FMath::Max(FW->PlayerFallSpeed, 1000.f)); // meets the player where it will be
+		const FVector Center = C + Lead + FVector(FMath::Cos(A0) * R0, FMath::Sin(A0) * R0, -Depth);
 		const int32 Count = Rng.RandRange(3, 5);
 		int32 Spawned = 0;
 		for (FPuff& P : Puffs)
@@ -366,7 +368,8 @@ void AFallSpeedField::Tick(float Dt)
 			const float Size = BaseSize * Rng.FRandRange(0.45f, 1.f);
 			const FVector Pos = Center + FVector(Rng.FRandRange(-0.5f, 0.5f) * BaseSize, Rng.FRandRange(-0.5f, 0.5f) * BaseSize, Rng.FRandRange(-0.8f, 0.8f) * BaseSize);
 			P.Comp->SetWorldLocation(Pos);
-			P.Comp->SetWorldScale3D(FVector(Size, Size * Rng.FRandRange(0.5f, 0.9f), 1.f) / 100.f);
+			P.BaseScale = FVector(Size, Size * Rng.FRandRange(0.5f, 0.9f), 100.f) / 100.f;
+			P.Comp->SetWorldScale3D(P.BaseScale);
 			P.Comp->SetVisibility(true);
 			P.Opacity = Rng.FRandRange(0.35f, 0.75f);
 			if (P.MID)
@@ -389,7 +392,10 @@ void AFallSpeedField::Tick(float Dt)
 		P.Comp->SetWorldLocation(Pos);
 		const FVector D = Pos - C;
 		// Billboard towards the camera, keep a stable roll; fade out when the camera is about to pass through.
-		P.Comp->SetWorldRotation(FRotationMatrix::MakeFromZX(-D.GetSafeNormal(), FVector::UpVector).Rotator());
+		// Billboard towards the camera, long axis along the airflow so fast wisps streak past.
+		P.Comp->SetWorldRotation(FRotationMatrix::MakeFromZX(-D.GetSafeNormal(), Rel.GetSafeNormal()).Rotator());
+		const float Stretch = 1.f + Speed / 14000.f;
+		P.Comp->SetWorldScale3D(FVector(P.BaseScale.X * Stretch, P.BaseScale.Y / FMath::Sqrt(Stretch), 1.f));
 		if (P.MID) P.MID->SetScalarParameterValue("Opacity", P.Opacity * FMath::SmoothStep(250.f, 1400.f, (float)D.Size()));
 		if (!P.bCounted && D.Z > 0.f)
 		{

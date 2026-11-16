@@ -143,4 +143,5 @@ protected:
 	FVector HeldAnchorLocal = FVector::ZeroVector;
 	FVector HeldNormalLocal = FVector::UpVector;
 	float GrabCooldown = 0.f;
+	float FovKick = 0.f;
 };

@@ -17,6 +17,7 @@ def make(name, cls):
 
 
 seq = make('DA_FallSequence', unreal.FallSequence)
+seq.reset_to_shipped_design()
 make('DA_FallMovement', unreal.FallMovementData)
 make('DA_FallAnim', unreal.FallAnimData)
 make('DA_FallWeapon', unreal.FallWeaponData)

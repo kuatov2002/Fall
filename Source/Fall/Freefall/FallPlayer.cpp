@@ -9,6 +9,7 @@
 #include "FallEnemy.h"
 #include "FallCombatData.h"
 #include "FreefallGameMode.h"
+#include "FallMenu.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -291,7 +292,7 @@ void AFallPlayer::UpdateHold(float Dt)
 	const FVector A = T.TransformPositionNoScale(HeldAnchorLocal);
 	const FVector N = T.TransformVectorNoScale(HeldNormalLocal).GetSafeNormal();
 	// The body hangs off the surface; it glides there in the first moments of the grab.
-	SetActorLocation(FMath::VInterpTo(GetActorLocation(), A + N * 48.f, Dt, 9.f));
+	SetActorLocation(FMath::VInterpTo(GetActorLocation(), A + N * 38.f, Dt, 9.f));
 	FallSpeed = P->Mover->FallSpeed / 100.f;
 	VelocityH = P->Mover->VelocityH;
 	AddActorWorldOffset(VelocityH * Dt);
@@ -308,8 +309,8 @@ void AFallPlayer::UpdateHold(float Dt)
 	Control.Dive = 0.f;
 	Control.Bank = 0.f;
 	const FVector Lat = (N ^ UpHint).GetSafeNormal();
-	Control.HandTarget[0] = A + UpHint * 22.f - Lat * 26.f + N * 4.f;
-	Control.HandTarget[1] = A + UpHint * 22.f + Lat * 26.f + N * 4.f;
+	Control.HandTarget[0] = A + UpHint * 38.f - Lat * 30.f + N * 3.f;
+	Control.HandTarget[1] = A + UpHint * 38.f + Lat * 30.f + N * 3.f;
 	Control.HandWeight[0] = 1.f;
 	Control.HandWeight[1] = Control.bAim ? 0.f : 1.f;
 }
@@ -403,7 +404,7 @@ void AFallPlayer::TryKick()
 	const UFallWeaponData* W = UFallWeaponData::Resolve(Weapon);
 	AFallEnemy* E = FindEnemyInReach(W->KickRange * 1.6f);
 	// A stunned parachute carrier in reach: take the parachute instead of kicking.
-	if (E && E->CanBeRobbed() && FVector::Dist(E->GetActorLocation(), GetActorLocation()) < W->KickRange)
+	if (E && E->CanBeRobbed() && FVector::Dist(E->GetActorLocation(), GetActorLocation()) < W->KickRange * 1.55f)
 	{
 		TakeParachute(E);
 		return;
@@ -546,7 +547,7 @@ void AFallPlayer::UpdateCombat(float Dt)
 	Camera->PostProcessSettings.SceneColorTint = FLinearColor(1.f, 1.f - DamagePulse * 0.35f, 1.f - DamagePulse * 0.4f);
 	Camera->PostProcessSettings.bOverride_ColorSaturation = true;
 	Camera->PostProcessSettings.ColorSaturation = FVector4(1.f, 1.f, 1.f, 1.f - Low * 0.6f);
-	if (Low > 0.5f) Flash(FLinearColor(1.f, 0.1f, 0.05f), 0.4f * (0.5f + 0.5f * FMath::Sin(Now * 6.f)) * Low);
+	if (Low > 0.5f) PulseLowHealth(0.15f * (0.5f + 0.5f * FMath::Sin(Now * 6.f)) * Low);
 }
 
 void AFallPlayer::UpdateCamera(float Dt)
@@ -556,7 +557,8 @@ void AFallPlayer::UpdateCamera(float Dt)
 	const FRotator CR = PC ? PC->GetControlRotation() : GetActorRotation();
 
 	const float SpeedN = FMath::Clamp((FallSpeed - M->BrakeSpeed) / (M->DiveSpeed - M->BrakeSpeed), 0.f, 1.f);
-	Camera->SetFieldOfView(FMath::Lerp(M->FOV.X, M->FOV.Y, SpeedN));
+	FovKick = FMath::FInterpTo(FovKick, 0.f, Dt, 3.5f);
+	Camera->SetFieldOfView(FMath::Lerp(M->FOV.X, M->FOV.Y, SpeedN) + FovKick);
 
 	// Shake: noise, grows with speed and the dive; impulses from hits.
 	ShakeClock += Dt * M->ShakeHz * FMath::Lerp(0.6f, 1.4f, SpeedN);
@@ -572,14 +574,14 @@ void AFallPlayer::UpdateCamera(float Dt)
 	// Dolly zoom: the FOV widens with speed while the arm shortens, so the body keeps its size on screen
 	// and only the world around it stretches.
 	const float Fov = Camera->FieldOfView;
-	const float Dolly = FMath::Tan(FMath::DegreesToRadians(M->FOV.X * 0.5f)) / FMath::Tan(FMath::DegreesToRadians(Fov * 0.5f));
+	const float Dolly = FMath::Tan(FMath::DegreesToRadians(M->FOV.X * 0.5f)) / FMath::Tan(FMath::DegreesToRadians((Fov - FovKick) * 0.5f));
 	const float DiveBias = M->DivePitchBias * FMath::Max(Dive, 0.f);
 	CameraArm->SetWorldRotation(FRotator(CR.Pitch + DiveBias, CR.Yaw, 0.f) + Shake);
 	CameraArm->TargetArmLength = M->ArmLength * Dolly;
 	CameraArm->SocketOffset = M->CameraOffset * FMath::Lerp(1.f, Dolly, 0.5f) + FVector(0.f, 0.f, CamAccelOffset);
 	// Head-down, the body hangs below the pelvis pivot: aim at its middle.
 	CameraArm->TargetOffset = FVector(0.f, 0.f, -45.f * FMath::Max(Dive, 0.f));
-	if (GetWorld()->GetTimeSeconds() > 1.f) Camera->PostProcessSettings.MotionBlurAmount = 0.35f;
+	if (GetWorld()->GetTimeSeconds() > 1.f) Camera->PostProcessSettings.MotionBlurAmount = 0.2f;
 
 	if (WindWave)
 	{
@@ -598,10 +600,11 @@ void AFallPlayer::Tick(float DeltaSeconds)
 		if (HitStopLeft <= 0.f) UGameplayStatics::SetGlobalTimeDilation(this, 1.f);
 	}
 	GatherInput(DeltaSeconds);
+	if (Pressed(&FFallInputFrame::bMenu) && !BotInput) SFallMenu::Toggle(Cast<APlayerController>(GetController()));
 	GrabCooldown -= DeltaSeconds;
 	// Brake: the body hits the air. Dive: the head drops first.
-	if (InputNow.Dive < -0.5f && InputPrev.Dive >= -0.5f) { AddShake(0.3f); PendingHit += FVector(0, 0, 1.f) * 0.9f; }
-	if (InputNow.Dive > 0.5f && InputPrev.Dive <= 0.5f) { PendingHit += GetActorForwardVector() * -0.5f; }
+	if (InputNow.Dive < -0.5f && InputPrev.Dive >= -0.5f) { AddShake(0.35f); AddImpulse(FVector::UpVector, 1.6f); FovKick = -6.f; }
+	if (InputNow.Dive > 0.5f && InputPrev.Dive <= 0.5f) { AddShake(0.25f); AddImpulse(GetActorForwardVector() * -1.f + FVector(0, 0, -0.5f), 0.8f); FovKick = 7.f; }
 	if (IsHolding())
 	{
 		if (Pressed(&FFallInputFrame::bPush)) PushOff();

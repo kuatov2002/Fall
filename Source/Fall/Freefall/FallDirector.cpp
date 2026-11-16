@@ -130,7 +130,7 @@ void AFallDirector::JumpTo(float T)
 		{
 			// Falling out of the airship: starts almost at rest and accelerates.
 			P->FallSpeed = 3.f;
-			if (APlayerController* PC = Cast<APlayerController>(P->GetController())) PC->SetControlRotation(FRotator(6.f, 0.f, 0.f));
+			if (APlayerController* PC = Cast<APlayerController>(P->GetController())) PC->SetControlRotation(FRotator(14.f, 0.f, 0.f));
 		}
 	}
 	FW->FallTime = T;

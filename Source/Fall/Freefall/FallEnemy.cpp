@@ -47,6 +47,7 @@ AFallEnemy::AFallEnemy()
 	AutoPossessAI = EAutoPossessAI::Disabled;
 	AIControllerClass = nullptr;
 	RimColor = FLinearColor(1.f, 0.35f, 0.25f);
+	HarnessColor = FLinearColor(0.02f, 0.02f, 0.022f);
 	RimIntensity = 0.08f;
 }
 

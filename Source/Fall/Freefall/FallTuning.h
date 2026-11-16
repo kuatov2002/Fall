@@ -162,7 +162,7 @@ public:
 
 	/** Low noise octave frequency at zero and full airspeed, Hz (slow balance corrections). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise")
-	FVector2D DriftHz = FVector2D(0.35f, 0.8f);
+	FVector2D DriftHz = FVector2D(0.6f, 1.2f);
 
 	/** High noise octave frequency at zero and full airspeed, Hz (buffeting). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise")
@@ -192,7 +192,7 @@ public:
 
 	/** Share of the look yaw carried by the spine twist. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Look")
-	float LookSpineShare = 0.25f;
+	float LookSpineShare = 0.2f;
 
 	/** Angular velocity added to spine and head per unit of hit strength, rad/s. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hit")
@@ -233,7 +233,7 @@ public:
 
 	/** How fast the stance follows the stick, 1/s. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Control")
-	float StanceRate = 3.2f;
+	float StanceRate = 2.6f;
 
 	/** Lateral slide speed, m/s. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Control")
@@ -253,7 +253,7 @@ public:
 
 	/** Body attitude spring frequency (Hz) and damping. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Body")
-	float AttitudeHz = 1.9f;
+	float AttitudeHz = 1.5f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Body")
 	float AttitudeDamping = 0.55f;
 

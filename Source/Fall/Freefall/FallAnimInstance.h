@@ -49,7 +49,7 @@ struct FFallAnimProxy : public FAnimInstanceProxy
 private:
 	enum class ERole : uint8
 	{
-		None, Spine, Neck, Clavicle, Upper, Lower, End, Finger
+		None, Pelvis, Spine, Neck, Clavicle, Upper, Lower, End, Finger
 	};
 
 	struct FLimbRef
@@ -66,6 +66,8 @@ private:
 	void Init(const FReferenceSkeleton& Ref);
 	FQuat Spring(int32 Bone, const FQuat& Target, const FFallBoneGroupTuning& G, float StiffMul, float Dt);
 	FQuat Noise(int32 Key, float AmpDeg) const;
+	/** High-frequency buffeting applied after the spring (the spring would filter it out). */
+	FQuat Flutter(int32 Key, float AmpDeg) const;
 	void SolveLimb(FLimbRef& L, const FFallLimb& Pose, const FVector Axes[3], const FVector& RootPos, float Dt);
 
 	FFallAnimInput In;
