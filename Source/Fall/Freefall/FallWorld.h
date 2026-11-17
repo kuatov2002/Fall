@@ -129,6 +129,7 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<USkyLightComponent> SkyLight;
 	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<UProceduralMeshComponent> Terrain;
 	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<UProceduralMeshComponent> TerrainDetail;
+	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<UProceduralMeshComponent> TerrainNear;
 	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<UProceduralMeshComponent> TerrainFar;
 	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<class UHierarchicalInstancedStaticMeshComponent> Trees;
 
@@ -160,7 +161,7 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<UInstancedStaticMeshComponent> Streaks;
 	/** Moisture and dust right by the camera: more and longer with speed. */
 	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<UInstancedStaticMeshComponent> Specks;
-	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumSpecks = 120;
+	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumSpecks = 60;
 	/** Bits of envelope fabric tumbling past, mostly near the airship. */
 	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumScraps = 0; // small dark cards read as confetti
 

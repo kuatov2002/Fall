@@ -76,7 +76,7 @@ void UFallSequence::BuildDefault()
 	Wave(6.f, EFallDebrisType::Rack, 0.4f, FVector2D(-16.f, -8.f), 16.f, 0.3f, 8.f, 0.2f, TEXT("Shelving and cabinets from the gondola"));
 	{
 		FFallSequenceEvent& E = Ev(9.5f, EFallEventType::DebrisPiece, TEXT("A frame ring falls past, wide enough to fly through"));
-		E.PieceType = EFallDebrisType::FrameRing; E.Position = FVector(14.f, -4.f, 70.f); E.Velocity = FVector(0.f, 0.f, -12.f); E.Value = 1.f;
+		E.PieceType = EFallDebrisType::Section; E.Position = FVector(14.f, -4.f, 70.f); E.Velocity = FVector(0.f, 0.f, -12.f); E.Value = 1.f;
 	}
 	{
 		FFallSequenceEvent& E = Ev(13.f, EFallEventType::DebrisPiece, TEXT("An airship propeller drops past, still spinning"));
@@ -112,7 +112,7 @@ void UFallSequence::BuildDefault()
 	Wave(30.f, EFallDebrisType::Crane, 0.07f, FVector2D(1.f, 4.f), 18.f, 0.6f, 36.f, 0.f, TEXT("Deck cranes and gantries: a place to fight from"));
 	Wave(28.f, EFallDebrisType::Lifeboat, 0.08f, FVector2D(2.f, 6.f), 18.f, 0.5f, 40.f, 0.f, TEXT("Lifeboats"));
 	Wave(30.f, EFallDebrisType::Searchlight, 0.1f, FVector2D(4.f, 12.f), 22.f, 0.3f, 36.f, 0.5f, TEXT("Searchlights"));
-	Wave(34.f, EFallDebrisType::FrameRing, 0.04f, FVector2D(-10.f, 6.f), 18.f, 0.7f, 30.f, 0.f, TEXT("Frame rings to fly through"));
+	// Frame rings removed (iteration 3): the thin twelve-sided hoop read as a polygonal rope loop, a render bug.
 	Wave(40.f, EFallDebrisType::Propeller, 0.03f, FVector2D(-14.f, -6.f), 24.f, 0.4f, 25.f, 0.f, TEXT("Spinning propellers"));
 	Enemy(24.f, EFallEnemyType::Shooter, FVector(25.f, -12.f, -6.f), TEXT("First shooter, alone, in front"));
 	Enemy(33.f, EFallEnemyType::Shooter, FVector(24.f, 14.f, 4.f), TEXT("Second shooter from the right"));

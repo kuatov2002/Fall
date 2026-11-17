@@ -131,6 +131,13 @@ void AFallReview::BotFull(float Dt, FFallInputFrame& Out)
 		Out.Look = FVector2D(FMath::Sin(BotClock * 0.3f) * 10.f * Dt, -CamRot.Pitch * 0.5f * Dt - 3.f * Dt);
 	}
 
+	// Tuning runs (-FallLookSun): the camera stays on the sunward horizon, where the haze is hardest to get right.
+	if (FParse::Param(FCommandLine::Get(), TEXT("FallLookSun")))
+	{
+		const FRotator Cur = P->Camera->GetComponentRotation();
+		Out.Look = FVector2D(FRotator::NormalizeAxis(215.f - Cur.Yaw), FRotator::NormalizeAxis(-8.f - Cur.Pitch)) * FMath::Min(1.f, Dt * 4.f);
+		return;
+	}
 	// Right after the jump a player looks back up at the burning airship for a few seconds.
 	if (!P->bInIntro && T < AfterIntroUntil - 1.f)
 	{

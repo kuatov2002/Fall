@@ -255,7 +255,7 @@ void AFallIntro::Tick(float Dt)
 	if (Alarm)
 	{
 		Alarm->SetWorldLocation(DeckToWorld(FVector(300.f, -470.f, 330.f)));
-		Alarm->SetIntensity(FMath::Max(0.f, FMath::Sin(T * 6.f)) * 60000.f);
+		Alarm->SetIntensity(FMath::Max(0.f, FMath::Sin(T * 6.f)) * 15000.f);
 	}
 
 	// The character: walk the beats, the clip changes with the beat.

@@ -50,7 +50,7 @@ UFallArtData::UFallArtData()
 		PH(TEXT("propane_tank"), TEXT("propane_tank_2k")), PH(TEXT("small_lpg_tank"), TEXT("small_lpg_tank_2k"))}, 1.3f, false, 1.f);
 	Add(Debris, T::Rack, {PH(TEXT("worn_metal_rack"), TEXT("worn_metal_rack_2k")), PH(TEXT("industrial_storage_cart"), TEXT("industrial_storage_cart_2k")),
 		PH(TEXT("metal_office_desk"), TEXT("metal_office_desk")), Zep(TEXT("VentBox")), PH(TEXT("utility_box_01"), TEXT("utility_box_01_2k"))}, 1.3f, false, 1.5f);
-	Add(Debris, T::Plate, {Zep(TEXT("BlastDoor")), PH(TEXT("rollershutter_door"), TEXT("rollershutter_door")), Zep(TEXT("Pallet"))}, 1.7f, true, 1.f);
+	Add(Debris, T::Plate, {Zep(TEXT("BlastDoor")), PH(TEXT("rollershutter_door"), TEXT("rollershutter_door"))}, 1.7f, true, 1.f); // no pallet: the same clean pallet everywhere (critic rounds 5-7)
 	Add(Debris, T::Girder, {Zep(TEXT("Railing")), PH(TEXT("ladder_sectioned_01"), TEXT("ladder_section_01")), PH(TEXT("modular_fire_escape"), TEXT("modular_fire_escape_ladder_bottom"))}, 1.f, true, 1.5f);
 	Add(Debris, T::Ductwork, {PH(TEXT("modular_airduct_circular_01"), TEXT("modular_airduct_circular_triple")), PH(TEXT("modular_airduct_rectangular_01"), TEXT("modular_airduct_rectangular_01_tripple_01")),
 		PH(TEXT("modular_airduct_rectangular_01"), TEXT("modular_airduct_rectangular_01_transition_double_01")), PH(TEXT("modular_industrial_pipes_01"), TEXT("modular_industrial_pipes_01_pipe02")),

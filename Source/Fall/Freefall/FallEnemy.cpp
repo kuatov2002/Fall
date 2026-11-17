@@ -265,7 +265,10 @@ void AFallEnemy::SetLaser(bool bOn, const FVector& From, const FVector& To)
 		// The warning starts as a hairline and thickens with a flicker as the shot comes closer.
 		const float A = FMath::Clamp(StateTime / FMath::Max(Data ? Data->TelegraphTime : 0.6f, 0.1f), 0.f, 1.f);
 		const float Flicker = 0.6f + 0.4f * FMath::Abs(FMath::Sin(StateTime * 40.f));
-		LaserHandle = FX->Beam(LaserHandle, From, To, FLinearColor(1.f, 0.04f, 0.02f) * Flicker, FMath::Lerp(0.5f, 2.6f, A * A), bOn);
+		// Only the first stretch from the muzzle, growing towards the target as the shot comes: a beam across the
+		// whole frame read as a laser pointer (critic rounds 1-7); the muzzle glow and the sound carry the rest.
+		const FVector End = From + (To - From) * FMath::Lerp(0.15f, 0.5f, A);
+		LaserHandle = FX->Beam(LaserHandle, From, End, FLinearColor(1.f, 0.04f, 0.02f) * Flicker * 0.7f, FMath::Lerp(0.5f, 2.2f, A * A), bOn);
 	}
 }
 
@@ -284,7 +287,7 @@ bool AFallEnemy::ReceiveHit(const FVector& PushDirWorld, float Strength, float D
 			++StunCount;
 			OwnFall += 2000.f;
 			VelH += FMath::VRand().GetSafeNormal2D() * 1200.f;
-			if (AFallFX* FX = AFallFX::Get(this)) for (int32 i = 0; i < 6; ++i) FX->Sprite(GetActorLocation(), FMath::VRand() * 500.f, 200.f, 1200.f, 2.f, FLinearColor(0.9f, 0.85f, 0.75f), 0.8f, true, 1.f);
+			if (AFallFX* FX = AFallFX::Get(this)) for (int32 i = 0; i < 6; ++i) FX->Sprite(GetActorLocation(), FMath::VRand() * 500.f, 200.f, 1200.f, 2.f, FLinearColor(0.3f, 0.28f, 0.27f), 0.6f, true, 1.f);
 			if (UFallWorldSubsystem* FWm = UFallWorldSubsystem::Get(this)) FWm->NoteEvent("TargetBreakaway");
 		}
 		if (bKilled)
@@ -580,7 +583,7 @@ void AFallEnemy::TickTarget(float Dt, AFallPlayer* P)
 		FlareTimer = 0.025f;
 		const float Near = FMath::SmoothStep(800.f, 1600.f, ToPlayer);
 		if (Near > 0.05f)
-			if (AFallFX* FX = AFallFX::Get(this)) FX->Sprite(Pack->GetComponentLocation(), FVector(0, 0, -OwnFall * 0.7f), 220.f, 520.f, 1.6f, FLinearColor(1.f, 0.85f, 0.25f), 0.6f * Near, true, 3.f); // big from the start: small puffs read as beads
+			if (AFallFX* FX = AFallFX::Get(this)) FX->Sprite(Pack->GetComponentLocation(), FVector(0, 0, -OwnFall * 0.7f), 160.f, 420.f, 1.3f, FLinearColor(1.f, 0.85f, 0.3f), 0.35f * Near, true, 2.f); // big from the start: small puffs read as beads
 	}
 	const FVector PP = P->GetActorLocation();
 	const FVector ToP = PP - GetActorLocation();
@@ -836,7 +839,7 @@ void AFallEnemy::TickWingsuiter(float Dt, AFallPlayer* P)
 				const float Pl = FW ? FW->PlayerFallSpeed : 5500.f;
 				for (const TCHAR* B : {TEXT("foot_l"), TEXT("foot_r")})
 				{
-					FX->Sprite(Mesh->GetSocketLocation(B), FVector(0, 0, Pl * 0.25f) - FVector(0, 0, Pl), 170.f, 420.f, 1.2f, FLinearColor(1.f, 0.35f, 0.2f), 0.45f, true, 2.5f); // each puff wider than the gap to the next: one trail, not beads
+					FX->Sprite(Mesh->GetSocketLocation(B), FVector(0, 0, Pl * 0.25f) - FVector(0, 0, Pl), 110.f, 520.f, 1.0f, FLinearColor(0.62f, 0.6f, 0.58f), 0.22f, true, 1.f); // a thin grey exhaust trail: the glowing orange one read as a pink sausage (rounds 6-9)
 				}
 			}
 		}

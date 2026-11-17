@@ -383,7 +383,14 @@ void AFallDirector::Tick(float Dt)
 		const float Bag = FMath::Clamp(CanopyTime / 0.3f, 0.f, 1.f);
 		Canopy->SetWorldScale3D(CanopyTime < 0.3f ? FVector(0.06f, 0.04f, 0.08f) * (0.5f + 0.5f * Bag)
 			: FVector(FMath::Lerp(0.12f, 1.f, Spread) * Over, SpanW, FMath::Lerp(1.8f, 1.f, Spread)));
-		if (!bShockDone && CanopyTime >= CanopyShockTime) { bShockDone = true; FallCanopyShock(this, P); }
+		if (!bShockDone && CanopyTime >= CanopyShockTime)
+		{
+			bShockDone = true;
+			FallCanopyShock(this, P);
+			// The fight is over: the remaining wreckage is gone under the jolt (pieces drifting past the canopy
+			// for the whole descent read as forgotten blocks).
+			if (AFallDebrisSpawner* Sp = AFallDebrisSpawner::Get(this)) Sp->DestroyAll();
+		}
 		if (AFallFX* FX = AFallFX::Get(this))
 		{
 			// Four risers from the bearer's shoulders (front and rear on each side), each fanning into four lines to

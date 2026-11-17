@@ -96,6 +96,16 @@ depth = e(m, unreal.MaterialExpressionPixelDepth, -700, -500)
 far = tex('DetailFar', TX + 'aerial_rocks_02/aerial_rocks_02_diff_2k', unreal.MaterialSamplerType.SAMPLERTYPE_COLOR, 0.35, -700, 100)
 nrm = tex('Normal', TX + 'aerial_rocks_02/aerial_rocks_02_nor_gl_2k', unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL, 0.35, -700, 400)
 vc = e(m, unreal.MaterialExpressionVertexColor, -700, -450)
+# Close range (landing, low canopy flight): grass and rock in world space every 6 m; from the ground the 3 m UV
+# detail alone read as soapy flat polygons (critic round 7).
+wp = e(m, unreal.MaterialExpressionWorldPosition, -1100, -650)
+wuv = e(m, unreal.MaterialExpressionComponentMask, -950, -650, r=True, g=True, b=False, a=False)
+mel.connect_material_expressions(wp, '', wuv, '')
+wsc = e(m, unreal.MaterialExpressionMultiply, -850, -650)
+mel.connect_material_expressions(wuv, '', wsc, 'A')
+wsc.set_editor_property('const_b', 1.0 / 600.0)
+close = e(m, unreal.MaterialExpressionTextureSampleParameter2D, -700, -650, parameter_name='DetailClose', texture=unreal.load_asset(TX + 'rock_06/rock_06_diff_2k') or unreal.load_asset(TX + 'aerial_grass_rock/aerial_grass_rock_diff_2k'), sampler_type=unreal.MaterialSamplerType.SAMPLERTYPE_COLOR)
+mel.connect_material_expressions(wsc, '', close, 'UVs')
 cu = e(m, unreal.MaterialExpressionCustom, -350, -150, output_type=unreal.CustomMaterialOutputType.CMOT_FLOAT3, description='TerrainDetail')
 cu.set_editor_property('code', '''
 float lfine = dot(Fine.rgb, float3(0.3, 0.59, 0.11));
@@ -103,12 +113,16 @@ float nearW = 1.0 - smoothstep(20000.0, 60000.0, Depth); // the last few hundred
 float lnear = lerp(dot(Near.rgb, float3(0.3, 0.59, 0.11)), lfine * 0.5 + dot(Near.rgb, float3(0.3, 0.59, 0.11)) * 0.5, nearW);
 float lfar = dot(Far.rgb, float3(0.3, 0.59, 0.11));
 float detail = lerp(1.0, (lnear * 0.55 + lfar * 0.45) * 2.6, 0.8);
+float lclose = dot(Close.rgb, float3(0.3, 0.59, 0.11));
+float closeW = 1.0 - smoothstep(3000.0, 15000.0, Depth);
+detail = lerp(detail, detail * lclose * 2.4, closeW * 0.45);
 float snow = saturate((dot(VC.rgb, float3(0.33, 0.33, 0.33)) - 0.55) * 4.0);
 float3 tinted = VC.rgb * detail * lerp(float3(1,1,1), Near.rgb / max(lnear, 0.05), 0.35);
-return lerp(tinted, VC.rgb * lerp(0.9, 1.05, lfar), snow);
+// Snow is not plaster: wind crust and rock showing through (the far rock texture), a little below pure white.
+return lerp(tinted, VC.rgb * 0.9 * lerp(0.8, 1.03, lfar), snow);  // stronger variation read as carpet (round 8)
 ''')
 ins = []
-for n in ('VC', 'Near', 'Far', 'Fine', 'Depth'):
+for n in ('VC', 'Near', 'Far', 'Fine', 'Depth', 'Close'):
     ci = unreal.CustomInput(); ci.set_editor_property('input_name', n); ins.append(ci)
 cu.set_editor_property('inputs', ins)
 mel.connect_material_expressions(vc, '', cu, 'VC')
@@ -116,6 +130,7 @@ mel.connect_material_expressions(near, 'RGB', cu, 'Near')
 mel.connect_material_expressions(far, 'RGB', cu, 'Far')
 mel.connect_material_expressions(fine, 'RGB', cu, 'Fine')
 mel.connect_material_expressions(depth, '', cu, 'Depth')
+mel.connect_material_expressions(close, 'RGB', cu, 'Close')
 mel.connect_material_property(cu, '', MP.MP_BASE_COLOR)
 mel.connect_material_property(nrm, 'RGB', MP.MP_NORMAL)
 mel.connect_material_property(sparam(m, 'Roughness', 0.92, -350, 200), '', MP.MP_ROUGHNESS)
@@ -178,7 +193,7 @@ if not eal.does_asset_exist(dst):
 _m = unreal.load_asset(dst)
 _r = mel.get_material_property_input_node(_m, MP.MP_ROUGHNESS)
 _k = mel.get_material_property_input_node(_m, MP.MP_METALLIC)
-if _r and _r.get_class().get_name() == 'MaterialExpressionMax': _r.set_editor_property('const_b', 0.3)
+if _r and _r.get_class().get_name() == 'MaterialExpressionMax': _r.set_editor_property('const_b', 0.45)  # 0.3 still read as liquid chrome / plastic (critic rounds 5-7)
 if _k and _k.get_class().get_name() == 'MaterialExpressionMultiply': _k.set_editor_property('const_b', 1.0)
 mel.recompile_material(_m)
 eal.save_loaded_asset(_m, False)

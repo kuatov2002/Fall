@@ -148,6 +148,7 @@ protected:
 	float RobTime = -1.f;
 	float TandemCam = 0.f;
 	float CamPush = 0.f;
+	float IntroEndTime = -100.f;
 	TArray<TWeakObjectPtr<UStaticMeshComponent>> CamHidden;
 	bool bKickApplied = false;
 

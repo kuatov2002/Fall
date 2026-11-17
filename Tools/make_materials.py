@@ -164,6 +164,8 @@ for _n in ('UV', 'Seed'):
 cu.set_editor_property('inputs', _ins)
 mel.connect_material_expressions(uv, '', cu, 'UV')
 mel.connect_material_expressions(seed, '', cu, 'Seed')
+# Tried in round 6: Epic's 8x8 smoke flipbook from NiagaraExamples (its channel packing is hidden behind material
+# functions; on a plain quad the smoke vanished), back to the Kenney atlas.
 tex = e(m, unreal.MaterialExpressionTextureSampleParameter2D, -900, 0, parameter_name='Puffs', texture=unreal.load_asset(_atlas))
 mel.connect_material_expressions(cu, '', tex, 'UVs')
 uvs = mul(m, uv, sparam(m, 'NoiseScale', 3.0, -1400, 300), -1250, 260)
@@ -177,7 +179,7 @@ mel.connect_material_expressions(ap, '', nz, 'Position')
 nl = e(m, unreal.MaterialExpressionLinearInterpolate, -650, 300)
 mel.connect_material_expressions(const(m, 1.0, -800, 520), '', nl, 'A')
 mel.connect_material_expressions(nz, '', nl, 'B')
-mel.connect_material_expressions(sparam(m, 'NoiseAmount', 0.3, -850, 450), '', nl, 'Alpha')
+mel.connect_material_expressions(sparam(m, 'NoiseAmount', 0.5, -850, 450), '', nl, 'Alpha')
 # Softer than the atlas: the puffs' own edges are drawn hard (cartoon smoke); a power on alpha and a radial falloff
 # turn them into soft cloud (critic round 2: "white stickers with hard edges").
 soft = e(m, unreal.MaterialExpressionCustom, -650, 120, output_type=unreal.CustomMaterialOutputType.CMOT_FLOAT1, description='SoftPuff')
@@ -236,14 +238,20 @@ def tparam(m, name, tex, sampler, x, y, uv=None):
     return n
 
 
-for name, two_sided in (('M_FF_PBR', False), ('M_FF_PBRTwoSided', True)):
+# M_FF_Fabric: thin fabric (the canopy) with two-sided foliage shading: the low sun shines through it from behind
+# instead of leaving the underside black.
+for name, two_sided in (('M_FF_PBR', False), ('M_FF_PBRTwoSided', True), ('M_FF_Fabric', True)):
     m = mk(name)
     tc = e(m, unreal.MaterialExpressionTextureCoordinate, -900, 0)
     uv = mul(m, tc, sparam(m, 'Tiling', 1.0, -900, 120), -750, 0)
     bc = tparam(m, 'BaseColor', '/Engine/EngineResources/WhiteSquareTexture', unreal.MaterialSamplerType.SAMPLERTYPE_COLOR, -500, -200, uv)
     nm = tparam(m, 'Normal', '/Engine/EngineMaterials/FlatNormal', unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL, -500, 100, uv)
     arm = tparam(m, 'ARM', '/Game/Freefall/Assets/Textures/metal_plate/metal_plate_arm_2k', unreal.MaterialSamplerType.SAMPLERTYPE_MASKS, -500, 400, uv)
-    out(m, mul(m, bc, vparam(m, 'Tint', unreal.LinearColor(1, 1, 1, 1), -300, -300), -150, -200, 'RGB'), MP.MP_BASE_COLOR)
+    tinted = mul(m, bc, vparam(m, 'Tint', unreal.LinearColor(1, 1, 1, 1), -300, -300), -150, -200, 'RGB')
+    out(m, tinted, MP.MP_BASE_COLOR)
+    if name == 'M_FF_Fabric':
+        m.set_editor_property('shading_model', unreal.MaterialShadingModel.MSM_TWO_SIDED_FOLIAGE)
+        out(m, mul(m, tinted, sparam(m, 'Transmission', 0.9, -300, -380), -150, -330), MP.MP_SUBSURFACE_COLOR)
     out(m, nm, MP.MP_NORMAL, 'RGB')
     out(m, mul(m, arm, sparam(m, 'RoughnessMul', 1.0, -300, 500), -150, 450, 'G'), MP.MP_ROUGHNESS)
     out(m, mul(m, arm, sparam(m, 'MetallicMul', 1.0, -300, 600), -150, 550, 'B'), MP.MP_METALLIC)

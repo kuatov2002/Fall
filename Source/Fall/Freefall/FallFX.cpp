@@ -156,7 +156,7 @@ void AFallFX::Flash(const FVector& Pos, float Size, const FLinearColor& Color, f
 	{
 		FlashLights[Idx]->SetWorldLocation(Pos);
 		FlashLights[Idx]->SetLightColor(Color);
-		FlashLights[Idx]->SetAttenuationRadius(FMath::Max(Size * 8.f, 800.f));
+		FlashLights[Idx]->SetAttenuationRadius(FMath::Max(Size * 4.f, 600.f));
 		FlashLights[Idx]->SetVisibility(true);
 	}
 }
@@ -346,7 +346,7 @@ void AFallFX::Tick(float Dt)
 		UPointLightComponent* L = FlashLights.IsValidIndex(Idx) ? FlashLights[Idx].Get() : nullptr;
 		if (P.Age >= P.Life) { P.bActive = false; if (L) L->SetVisibility(false); continue; }
 		const float X = P.Age / P.Life;
-		if (L) L->SetIntensity(FMath::Square(P.Size0) * 0.004f * FMath::Square(1.f - X)); // sun is 9 lux: a 9 m blast outshines it threefold at its own radius
+		if (L) L->SetIntensity(FMath::Square(P.Size0) * 0.0025f * FMath::Square(1.f - X)); // sun is 9 lux: a 9 m blast outshines it threefold at its own radius
 	}
 	for (FPart& P : SparkPool)
 	{

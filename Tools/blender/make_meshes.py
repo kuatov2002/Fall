@@ -122,14 +122,14 @@ rows = []
 for j in range(ns + 1):
     s = j / ns
     y = (s - 0.5) * span
-    arch = -0.8 * ((2 * s - 1) ** 2)  # tips lower than the middle
+    arch = -1.5 * ((2 * s - 1) ** 2)  # tips well below the middle (a real ram-air canopy is strongly arched)
     ang = (2 * s - 1) * math.radians(12)
     row_top, row_bot = [], []
-    bulge = 0.06 * math.sin(math.pi * ((j % 4) / 4))  # cells puff between ribs
+    bulge = 0.22 * math.sin(math.pi * ((j % 4) / 4))  # cells puff out between the ribs: a flat top read as a box (critic, iteration 3)
     for x, th in section(s):
         X = (x - 0.3) * chord
         z_top = arch + th + bulge * (1 - x)
-        z_bot = arch - 0.02 * (1 - x)
+        z_bot = arch - 0.02 * (1 - x) - bulge * 0.35 * (1 - x)  # the underside sags between the ribs too
         row_top.append(bm.verts.new((X, y, z_top)))
         row_bot.append(bm.verts.new((X, y, z_bot)))
     rows.append((row_top, row_bot, s))
@@ -172,9 +172,9 @@ parts.append(cyl('barrel', 0.028, 0.55, (1.45, 0, 0.84), rot=(0, math.radians(90
 parts.append(cyl('muzzle', 0.05, 0.12, (1.75, 0, 0.84), rot=(0, math.radians(90), 0), verts=12, material='Gunmetal'))
 parts.append(box('grip', (0.05, 0.05, 0.16), (-0.28, 0.10, 0.78), material='Gunmetal'))
 parts.append(box('grip2', (0.05, 0.05, 0.16), (-0.28, -0.10, 0.78), material='Gunmetal'))
-parts.append(box('shield_l', (0.05, 0.42, 0.62), (0.40, 0.27, 0.86), rot=(0, 0, math.radians(-14)), bevel=0.01, material='Olive'))
-parts.append(box('shield_r', (0.05, 0.42, 0.62), (0.40, -0.27, 0.86), rot=(0, 0, math.radians(14)), bevel=0.01, material='Olive'))
-parts.append(box('shield_top', (0.05, 0.16, 0.22), (0.43, 0, 1.06), bevel=0.01, material='Olive'))
-parts.append(box('shield_bottom', (0.05, 0.16, 0.26), (0.43, 0, 0.62), bevel=0.01, material='Olive'))
+parts.append(box('shield_l', (0.04, 0.3, 0.4), (0.40, 0.2, 0.86), rot=(0, 0, math.radians(-14)), bevel=0.01, material='Olive'))
+parts.append(box('shield_r', (0.04, 0.3, 0.4), (0.40, -0.2, 0.86), rot=(0, 0, math.radians(14)), bevel=0.01, material='Olive'))
+parts.append(box('shield_top', (0.04, 0.12, 0.12), (0.43, 0, 1.0), bevel=0.01, material='Olive'))
+parts.append(box('shield_bottom', (0.04, 0.12, 0.14), (0.43, 0, 0.72), bevel=0.01, material='Olive'))
 export(parts, 'SM_Turret')
 print('MESHES_OK')

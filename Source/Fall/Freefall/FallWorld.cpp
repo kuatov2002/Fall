@@ -9,6 +9,8 @@
 #include "Components/SkyLightComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -93,12 +95,13 @@ namespace
 	{
 		// Alpine belts (game metres, valley floor 320 = 470 m above sea level): fields on the floor, forest up to the
 		// tree line, alpine meadow, scree and rock, snow from ~3000 m above sea level.
-		const FLinearColor Meadow(0.10f, 0.16f, 0.05f), Forest(0.035f, 0.07f, 0.03f), Rock(0.16f, 0.14f, 0.12f), Snow(0.82f, 0.85f, 0.9f), Scree(0.24f, 0.22f, 0.2f), Alpine(0.12f, 0.13f, 0.06f);
+		const FLinearColor Meadow(0.10f, 0.16f, 0.05f), Forest(0.035f, 0.07f, 0.03f), Rock(0.16f, 0.14f, 0.12f), Snow(0.62f, 0.64f, 0.68f), Scree(0.24f, 0.22f, 0.2f), Alpine(0.12f, 0.13f, 0.06f);
 		FLinearColor C = FMath::Lerp(Meadow, Forest, FMath::SmoothStep(360.f, 520.f, H + Noise * 80.f));
 		C = FMath::Lerp(C, Alpine, FMath::SmoothStep(1750.f, 2000.f, H + Noise * 150.f));
 		C = FMath::Lerp(C, Scree, FMath::SmoothStep(2250.f, 2550.f, H + Noise * 200.f));
 		C = FMath::Lerp(C, Rock * (0.75f + 0.5f * FMath::Abs(Noise)), FMath::SmoothStep(0.3f, 0.6f, Slope));
-		C = FMath::Lerp(C, Snow, FMath::SmoothStep(2700.f, 2950.f, H + Noise * 250.f) * (1.f - FMath::SmoothStep(0.55f, 0.85f, Slope)));
+		// Snow below white and only on the gentler slopes: rock shows through on the steep faces (read as styrofoam).
+		C = FMath::Lerp(C, Snow, FMath::SmoothStep(2700.f, 2950.f, H + Noise * 250.f) * (1.f - FMath::SmoothStep(0.4f, 0.7f, Slope)));
 		return C;
 	}
 }
@@ -111,7 +114,8 @@ float AFallPlanet::HeightAt(float Xm, float Ym)
 		const float Real = T->HeightAt(Xm, Ym);
 		const float Dist = FMath::Sqrt(Xm * Xm + Ym * Ym);
 		const float Floor = T->ValleyFloor + 12.f * FMath::PerlinNoise2D(FVector2D(Xm / 300.f, Ym / 300.f));
-		return FMath::Lerp(FMath::Min(Real, Floor + 40.f), Real, FMath::SmoothStep(700.f, 1600.f, Dist));
+		// Only a small soft patch: the old 1.6 km flattened disc left a terrace edge and a wall around the landing.
+		return FMath::Lerp(FMath::Min(Real, Floor + 60.f), Real, FMath::SmoothStep(250.f, 900.f, Dist));
 	}
 	// Domain warp: bends the ridge lines so the same shapes do not repeat.
 	const float Wx = FMath::PerlinNoise2D(FVector2D(Xm / 6000.f + 3.1f, Ym / 6000.f - 1.7f)) * 2500.f;
@@ -139,7 +143,9 @@ AFallPlanet::AFallPlanet()
 	Atmosphere->AerialPespectiveViewDistanceScale = 1.4f; // 2.0 washed the far plains towards the sun white // the far ranges dissolve into the bright horizon instead of meeting it at a seam
 	// The planet beyond the 80 km terrain: dark olive like the land, so it fades into haze instead of glowing pale blue.
 	Atmosphere->GroundAlbedo = FColor(34, 32, 22);
-	Atmosphere->SkyLuminanceFactor = FLinearColor(0.7f, 0.7f, 0.7f);
+	// Sky luminance at 1: at 0.7 the sky right above the horizon was darker than the haze over the ground below it,
+	// a flat bright band with a hard top edge (critic rounds 3-6).
+	Atmosphere->SkyLuminanceFactor = FLinearColor(1.f, 1.f, 1.f);
 	// Less forward (Mie) glare in the haze: towards the sun the far ranges went into a flat white band.
 	Atmosphere->MieAnisotropy = 0.65f;
 	Atmosphere->MieScatteringScale = 0.0025f;
@@ -151,11 +157,11 @@ AFallPlanet::AFallPlanet()
 	Sun->SetupAttachment(RootComponent);
 	Sun->SetUsingAbsoluteRotation(true);
 	// Golden hour: the sun 7 degrees above the horizon, off to the side of the usual view.
-	Sun->SetWorldRotation(FRotator(-10.f, 35.f, 0.f)); // 10 degrees: still golden, the valley floor at the landing is not black
+	Sun->SetWorldRotation(FRotator(-8.5f, 35.f, 0.f)); // low and golden; at 10 it read as plain daylight, at 7 the landing valley went black
 	// Sun to sky ratio raised (sun 13 lux on the engine's default scale, sky luminance 0.7): sunlit snow and rock
 	// reach real highlights while the sky near the horizon stops being the brightest thing in the frame.
 	Sun->SetIntensity(13.f);
-	Sun->SetLightColor(FLinearColor(1.f, 0.74f, 0.5f));
+	Sun->SetLightColor(FLinearColor(1.f, 0.66f, 0.4f));
 	Sun->SetAtmosphereSunLight(true);
 	Sun->SetMobility(EComponentMobility::Movable);
 	Sun->bCastCloudShadows = true;
@@ -164,7 +170,10 @@ AFallPlanet::AFallPlanet()
 	SkyLight->SetupAttachment(RootComponent);
 	SkyLight->SetMobility(EComponentMobility::Movable);
 	SkyLight->bRealTimeCapture = true;
-	SkyLight->SetIntensity(3.f); // valleys in the mountains' shadow at sunset went black under the fixed exposure
+	SkyLight->SetIntensity(3.f);
+	// Light bounced off the sunlit ground: the airship's underside and the hero's chest were pure black (round 8).
+	SkyLight->bLowerHemisphereIsBlack = false;
+	SkyLight->SetLowerHemisphereColor(FLinearColor(0.35f, 0.3f, 0.24f)); // valleys in the mountains' shadow at sunset went black under the fixed exposure
 
 	Haze = CreateDefaultSubobject<UExponentialHeightFogComponent>(TEXT("Haze"));
 	Haze->SetupAttachment(Anchor);
@@ -185,6 +194,9 @@ AFallPlanet::AFallPlanet()
 	TerrainFar = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("TerrainFar"));
 	TerrainFar->SetupAttachment(Anchor);
 	TerrainFar->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	TerrainNear = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("TerrainNear"));
+	TerrainNear->SetupAttachment(Anchor);
+	TerrainNear->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	TerrainDetail = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("TerrainDetail"));
 	TerrainDetail->SetupAttachment(Anchor);
 	TerrainDetail->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -205,6 +217,18 @@ void AFallPlanet::BeginPlay()
 	// The planet-wide deck read as a flat white slab on the horizon; the cloud passage is carried by the veil and
 	// the wisps, and the horizon is mountains in haze.
 	Clouds->SetVisibility(bVolumetricClouds);
+	// Tuning runs: -FallHaze=<aerial perspective scale>,<fog max opacity>,<sunward inscattering scale>.
+	FString HazeArg;
+	if (FParse::Value(FCommandLine::Get(), TEXT("FallHaze="), HazeArg))
+	{
+		TArray<FString> V;
+		HazeArg.ParseIntoArray(V, TEXT(","));
+		if (V.Num() > 0) Atmosphere->AerialPespectiveViewDistanceScale = FCString::Atof(*V[0]);
+		if (V.Num() > 1) Haze->SetFogMaxOpacity(FCString::Atof(*V[1]));
+		if (V.Num() > 2) Haze->SetDirectionalInscatteringColor(FLinearColor(0.28f, 0.16f, 0.08f) * FCString::Atof(*V[2]));
+		if (V.Num() > 3) Atmosphere->SkyLuminanceFactor = FLinearColor::White * FCString::Atof(*V[3]);
+		Atmosphere->MarkRenderStateDirty();
+	}
 	Clouds->SetLayerBottomAltitude(CloudDeck.X);
 	Clouds->SetLayerHeight(CloudDeck.Y);
 	BuildTerrain();
@@ -229,6 +253,12 @@ void AFallPlanet::BuildTerrain()
 				// Sink the coarse mesh under the detail patch so the two never z-fight.
 				const float Inside = 1.f - FMath::Max(FMath::SmoothStep(DetailHalf - 600.f, DetailHalf, FMath::Abs(X)), FMath::SmoothStep(DetailHalf - 600.f, DetailHalf, FMath::Abs(Y)));
 				Z -= 160.f * Inside; // real slopes are steep: the coarse mesh must stay well under the detail patch
+				if (C == Terrain)
+				{
+					// The 80 km mesh (242 m facets) sinks under the 20 km one (50 m) wherever that one exists.
+					const float InNear = 1.f - FMath::Max(FMath::SmoothStep(9000.f, 10000.f, FMath::Abs(X)), FMath::SmoothStep(9000.f, 10000.f, FMath::Abs(Y)));
+					Z -= 300.f * InNear;
+				}
 				if (C == TerrainFar)
 				{
 					// The far ring sinks under the 80 km mesh wherever that one exists.
@@ -268,6 +298,7 @@ void AFallPlanet::BuildTerrain()
 	};
 	Build(Terrain, 40000.f, 330, true);
 	Build(TerrainFar, 330000.f, 260, true); // out towards the horizon (340 km from 9 km up); the planet beyond is haze
+	Build(TerrainNear, 10000.f, 400, true); // 50 m: from canopy height the 242 m facets of the 80 km mesh showed (critic round 6)
 	Build(TerrainDetail, DetailHalf, 208, false);
 
 	// Forest on the valley slopes.
@@ -360,7 +391,7 @@ void AFallSpeedField::BeginPlay()
 	{
 		UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(Add, this);
 		MID->SetVectorParameterValue("Color", FLinearColor(1.f, 0.82f, 0.62f));
-		MID->SetScalarParameterValue("Intensity", 0.9f);
+		MID->SetScalarParameterValue("Intensity", 0.5f); // dimmer: bright specks read as rain streaks / render bugs
 		Specks->SetMaterial(0, MID);
 	}
 	SpeckPos.SetNum(NumSpecks);
@@ -500,7 +531,8 @@ void AFallSpeedField::Tick(float Dt)
 	}
 
 	// Cloud wisps rising past the camera.
-	NextPuff -= Dt * FMath::Max(FW->CloudDensity, 0.f) * FMath::Clamp(FW->PlayerFallSpeed / 5500.f, 0.85f, 1.8f);
+	// Wisps only inside the cloud layers: in clear air the sprite clouds read as flat white cut-outs (rounds 1-7).
+	NextPuff -= Dt * FMath::Max(FW->CloudDensity - 1.2f, 0.f) * FMath::Clamp(FW->PlayerFallSpeed / 5500.f, 0.85f, 1.8f);
 	// Never more than ~0.8 s without something passing close: the next cluster is forced close and soon.
 	SinceClose += Dt;
 	if (SinceClose > 0.55f && ForceClose == 0) { ForceClose = 1; NextPuff = FMath::Min(NextPuff, 0.f); }
@@ -530,7 +562,7 @@ void AFallSpeedField::Tick(float Dt)
 			P.BaseScale = FVector(Size, Size * Rng.FRandRange(0.5f, 0.9f), 100.f) / 100.f;
 			P.Comp->SetWorldScale3D(P.BaseScale);
 			P.Comp->SetVisibility(true);
-			P.Opacity = Rng.FRandRange(0.12f, 0.3f) * (bClose ? 0.6f : 1.f); // thin: dense ones read as white stickers
+			P.Opacity = Rng.FRandRange(0.07f, 0.16f); // a veil rushing past, never a white sticker
 			if (P.MID)
 			{
 				P.MID->SetScalarParameterValue("Opacity", P.Opacity);

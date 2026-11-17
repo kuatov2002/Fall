@@ -63,8 +63,10 @@ void AFallAirship::BeginPlay()
 	Glow->SetupAttachment(RootComponent);
 	Glow->SetRelativeLocation(FVector(0, 0, 2400.f)); // inside the envelopes, well above the deck
 	Glow->SetIntensityUnits(ELightUnits::Candelas);
-	Glow->SetIntensity(250000.f);
-	Glow->SetAttenuationRadius(9000.f);
+	// Fire glow inside the envelope. 250000 cd was ~430 lux on the deck, 30 times the sun: hidden by the free
+	// auto exposure before, it burnt the deck and the thrown hero to gold under the fixed exposure.
+	Glow->SetIntensity(6000.f);
+	Glow->SetAttenuationRadius(6000.f);
 	Glow->SetLightColor(FLinearColor(1.f, 0.45f, 0.12f));
 	Glow->SetCastShadows(false);
 	Glow->RegisterComponent();

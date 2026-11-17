@@ -535,7 +535,7 @@ void AFallPlayer::Fire()
 		FX->Tracer(Muzzle, Impact, W->TracerColor, 2.5f);
 		FX->Flash(Muzzle, 35.f, FLinearColor(1.f, 0.7f, 0.35f), 0.04f);
 		const UFallArtData* Art = UFallArtData::Get();
-		FX->SpawnOn(Art->MuzzleFlash.LoadSynchronous(), WeaponMesh, Muzzle, 0.28f, MuzzleForward().Rotation());
+		FX->SpawnOn(Art->MuzzleFlash.LoadSynchronous(), WeaponMesh, Muzzle, 0.18f, MuzzleForward().Rotation());
 		if (WeaponMesh)
 		{
 			const FTransform GT = WeaponMesh->GetComponentTransform();
@@ -822,7 +822,7 @@ void AFallPlayer::UpdateCamera(float Dt)
 	ArmPunchTarget = FMath::FInterpTo(ArmPunchTarget, 0.f, Dt, 2.5f);
 	CameraArm->TargetArmLength = M->ArmLength * Dolly * (1.f + ArmPunch) * (1.f - 0.08f * FMath::Abs(InputNow.Slide));
 	// In the chase the camera moves over the shoulder so the carrier below is not hidden behind the body.
-	CameraArm->SocketOffset = M->CameraOffset * FMath::Lerp(1.f, Dolly, 0.5f) + FVector(0.f, 130.f * ChaseShoulder, CamAccelOffset);
+	CameraArm->SocketOffset = M->CameraOffset * FMath::Lerp(1.f, Dolly, 0.5f) + FVector(0.f, 60.f * ChaseShoulder, CamAccelOffset); // 130 pushed the hero into a cropped corner (critic round 5)
 	// Head-down, the body hangs below the pelvis pivot: aim at its middle.
 	CameraArm->TargetOffset = FVector(0.f, 0.f, -45.f * FMath::Max(Dive, 0.f));
 	// Under the canopy the camera pulls back and up so the canopy and the risers are in frame.
@@ -871,12 +871,16 @@ void AFallPlayer::UpdateCamera(float Dt)
 			It->GetComponents(Comps);
 			for (UStaticMeshComponent* C : Comps)
 			{
-				if (!C->IsVisible() || C->Bounds.BoxExtent.GetMax() < 150.f) continue;
-				if (C->Bounds.GetBox().ExpandBy(-C->Bounds.BoxExtent * 0.2f).IsInside(CamPos)) { C->SetVisibility(false); CamHidden.AddUnique(C); } // deep inside, not just near
+				if (!C->IsVisible() || (C->Bounds.BoxExtent.GetMax() < 150.f && TandemCam < 0.3f)) continue;
+				// Deep inside a big piece, or (tandem shot, the camera swinging wide) any piece right at the lens.
+				const bool bInside = C->Bounds.GetBox().ExpandBy(-C->Bounds.BoxExtent * 0.2f).IsInside(CamPos);
+				const bool bAtLens = TandemCam > 0.3f && C->Bounds.GetBox().ExpandBy(120.f).IsInside(CamPos);
+				if (bInside || bAtLens) { C->SetVisibility(false); CamHidden.AddUnique(C); }
 			}
 		}
 	}
-	if (GetWorld()->GetTimeSeconds() > 1.f) Camera->PostProcessSettings.MotionBlurAmount = FMath::Lerp(0.08f, 0.22f, SpeedN) * (1.f - CanopyCam); // more smeared whole frames into mush (critic round 1)
+	// No motion blur while the camera blends out of the cutscene (it ghosted the hero into a smeared double).
+	if (GetWorld()->GetTimeSeconds() > 1.f && GetWorld()->GetTimeSeconds() - IntroEndTime > 2.f) Camera->PostProcessSettings.MotionBlurAmount = FMath::Lerp(0.08f, 0.22f, SpeedN) * (1.f - CanopyCam); // more smeared whole frames into mush (critic round 1)
 	Camera->PostProcessSettings.bOverride_MotionBlurMax = true;
 	Camera->PostProcessSettings.MotionBlurMax = 2.5f;
 
@@ -894,7 +898,7 @@ void AFallPlayer::UpdateCamera(float Dt)
 	}
 	if (ScreenWind)
 	{
-		ScreenWind->SetScalarParameterValue("Strength", FMath::SmoothStep(0.45f, 1.f, SpeedN) * (1.f - CanopyCam) + FovKick * 0.02f);
+		ScreenWind->SetScalarParameterValue("Strength", 0.55f * FMath::SmoothStep(0.55f, 1.f, SpeedN) * (1.f - CanopyCam) + FovKick * 0.02f); // radial smear only at the top speeds, and lighter
 		ScreenWind->SetScalarParameterValue("Frost", Frost * 0.6f);
 		ScreenWind->SetScalarParameterValue("Veil", CloudVeil * 0.45f);
 	}
@@ -945,6 +949,8 @@ void AFallPlayer::BeginIntro()
 void AFallPlayer::EndIntro(const FVector& ThrowDir)
 {
 	bInIntro = false;
+	IntroEndTime = GetWorld()->GetTimeSeconds();
+	Camera->PostProcessSettings.MotionBlurAmount = 0.f;
 	Mesh->SetAnimationMode(EAnimationMode::AnimationBlueprint);
 	Mesh->SetAnimInstanceClass(UFallAnimInstance::StaticClass());
 	if (UFallAnimInstance* AI = Cast<UFallAnimInstance>(Mesh->GetAnimInstance())) AI->AnimData = AnimData;
