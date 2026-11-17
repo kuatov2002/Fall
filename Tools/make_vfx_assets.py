@@ -182,8 +182,10 @@ cpath = P + '/MI_FF_Clouds'
 base = unreal.load_asset('/Engine/EngineSky/VolumetricClouds/m_SimpleVolumetricCloud_Inst')
 c = unreal.load_asset(cpath) if eal.does_asset_exist(cpath) else at.create_asset('MI_FF_Clouds', P, unreal.MaterialInstanceConstant, unreal.MaterialInstanceConstantFactoryNew())
 c.set_editor_property('parent', base)
-mel.set_material_instance_scalar_parameter_value(c, 'Cloud_GlobalCoverage', -0.34)
+mel.set_material_instance_scalar_parameter_value(c, 'Cloud_GlobalCoverage', -0.27)
 mel.set_material_instance_scalar_parameter_value(c, 'Layout_CloudGlobalScale', 190.0)
+# sunset cloud sea: warmer and darker than white, so it does not out-glow the sky above the horizon
+mel.set_material_instance_vector_parameter_value(c, 'Cloud_AlbedoColor', unreal.LinearColor(0.5, 0.42, 0.36, 1))
 eal.save_loaded_asset(c, False)
 
 eal.save_directory(P)

@@ -151,7 +151,7 @@ void UFallSequence::BuildDefault()
 	Clouds(134.f, 3.5f);
 	Enemy(127.f, EFallEnemyType::Shooter, FVector(20.f, -10.f, -15.f), TEXT("Escort shooter"));
 	Enemy(138.f, EFallEnemyType::Wingsuiter, FVector(40.f, 40.f, 10.f), TEXT("Escort wingsuiter"));
-	Clouds(146.f, 0.8f);
+	Clouds(146.f, 0.15f); // under the deck the air is clear
 	Wave(150.f, EFallDebrisType::Shards, 1.5f, FVector2D(8.f, 14.f), 16.f, 0.4f, 15.f, 0.f, TEXT("Last fragments"));
 	Wave(126.f, EFallDebrisType::Plate, 0.4f, FVector2D(-6.f, 4.f), 18.f, 0.3f, 20.f, 0.2f, TEXT("Plates in the chase"));
 	End(169.9f, "Chase");

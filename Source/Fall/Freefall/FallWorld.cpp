@@ -123,7 +123,9 @@ AFallPlanet::AFallPlanet()
 	Atmosphere = CreateDefaultSubobject<USkyAtmosphereComponent>(TEXT("Atmosphere"));
 	Atmosphere->SetupAttachment(Anchor);
 	Atmosphere->TransformMode = ESkyAtmosphereTransformMode::PlanetTopAtComponentTransform;
-	Atmosphere->AerialPespectiveViewDistanceScale = 2.5f; // softer horizon over the cloud sea
+	Atmosphere->AerialPespectiveViewDistanceScale = 1.2f;
+	// The planet beyond the 80 km terrain: dark olive like the land, so it fades into haze instead of glowing pale blue.
+	Atmosphere->GroundAlbedo = FColor(34, 32, 22);
 
 	Clouds = CreateDefaultSubobject<UVolumetricCloudComponent>(TEXT("Clouds"));
 	Clouds->SetupAttachment(Anchor);
@@ -146,8 +148,9 @@ AFallPlanet::AFallPlanet()
 
 	Haze = CreateDefaultSubobject<UExponentialHeightFogComponent>(TEXT("Haze"));
 	Haze->SetupAttachment(Anchor);
-	Haze->SetFogDensity(0.06f);
-	Haze->SetFogHeightFalloff(0.35f);
+	// Haze reaches up past the cloud deck: the distant horizon blends into warm air instead of a hard seam.
+	Haze->SetFogDensity(0.025f);
+	Haze->SetFogHeightFalloff(0.2f);
 	Haze->SetFogMaxOpacity(0.92f);
 	Haze->SetFogInscatteringColor(FLinearColor(0.32f, 0.42f, 0.62f));
 	Haze->SetDirectionalInscatteringExponent(6.f);
@@ -157,6 +160,9 @@ AFallPlanet::AFallPlanet()
 	Terrain = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("Terrain"));
 	Terrain->SetupAttachment(Anchor);
 	Terrain->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	TerrainFar = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("TerrainFar"));
+	TerrainFar->SetupAttachment(Anchor);
+	TerrainFar->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	TerrainDetail = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("TerrainDetail"));
 	TerrainDetail->SetupAttachment(Anchor);
 	TerrainDetail->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -198,8 +204,15 @@ void AFallPlanet::BuildTerrain()
 				// Sink the coarse mesh under the detail patch so the two never z-fight.
 				const float Inside = 1.f - FMath::Max(FMath::SmoothStep(DetailHalf - 600.f, DetailHalf, FMath::Abs(X)), FMath::SmoothStep(DetailHalf - 600.f, DetailHalf, FMath::Abs(Y)));
 				Z -= 40.f * Inside;
+				if (C == TerrainFar)
+				{
+					// The far ring sinks under the 80 km mesh wherever that one exists.
+					const float InMid = 1.f - FMath::Max(FMath::SmoothStep(38000.f, 40000.f, FMath::Abs(X)), FMath::SmoothStep(38000.f, 40000.f, FMath::Abs(Y)));
+					Z -= 150.f * InMid;
+				}
 			}
-			return Z;
+			// Earth curvature, so the far terrain meets the atmosphere's horizon instead of floating above it.
+			return Z - (X * X + Y * Y) / (2.f * 6371000.f);
 		};
 		for (int32 y = 0; y < N; ++y)
 		{
@@ -229,6 +242,7 @@ void AFallPlanet::BuildTerrain()
 		if (Mat) C->SetMaterial(0, Mat);
 	};
 	Build(Terrain, 40000.f, 330, true);
+	Build(TerrainFar, 330000.f, 260, true); // out towards the horizon (340 km from 9 km up); the planet beyond is haze
 	Build(TerrainDetail, DetailHalf, 208, false);
 
 	// Forest on the valley slopes.
@@ -314,8 +328,8 @@ void AFallSpeedField::BeginPlay()
 	if (Add)
 	{
 		UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(Add, this);
-		MID->SetVectorParameterValue("Color", FLinearColor(1.f, 0.9f, 0.78f));
-		MID->SetScalarParameterValue("Intensity", 2.2f);
+		MID->SetVectorParameterValue("Color", FLinearColor(1.f, 0.82f, 0.62f));
+		MID->SetScalarParameterValue("Intensity", 0.9f);
 		Specks->SetMaterial(0, MID);
 	}
 	SpeckPos.SetNum(NumSpecks);
@@ -468,7 +482,7 @@ void AFallSpeedField::Tick(float Dt)
 		if (bClose) SinceClose = 0.f;
 		const float BaseSize = Rng.FRandRange(PuffSize.X, PuffSize.Y) * (bClose ? 0.35f : 1.f) * FMath::Lerp(1.f, 3.f, FMath::Clamp((FW->CloudDensity - 1.f) / 2.f, 0.f, 1.f));
 		const float A0 = Rng.FRandRange(0.f, 2.f * PI);
-		const float R0 = bClose ? Rng.FRandRange(220.f, 600.f) : Rng.FRandRange(BaseSize * 0.3f + 400.f, 1600.f);
+		const float R0 = bClose ? Rng.FRandRange(650.f, 1300.f) : Rng.FRandRange(BaseSize * 0.3f + 400.f, 1600.f);
 		++ClusterId;
 		const float Depth = bClose ? FMath::Clamp(FW->PlayerFallSpeed * 0.3f, 1500.f, 3000.f) : 9000.f + Rng.FRandRange(0.f, 3000.f);
 		const FVector Lead = FW->PlayerVelocityH * (Depth / FMath::Max(FW->PlayerFallSpeed, 1000.f)); // meets the player where it will be
