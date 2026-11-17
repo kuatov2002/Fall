@@ -211,3 +211,10 @@ RunUAT.bat BuildCookRun -project=Fall.uproject -noP4 -platform=Win64 -clientconf
 | `-FallIntro`, `-FallNoIntro` | катсцена в прогоне бота / без неё |
 | `Tools/balance_runs.sh <tag> good|avg <N>` | N полных прогонов без рендера, итог «прошёл / смерти» |
 | metrics.json: `engine_primitives`, `self_intersection_*`, `passed`, `deaths` | ворота итерации 2 |
+
+## 14. Итерация 3: оружие, перезарядка, тандем, свет, ревью
+- **Оружие.** `AFallBody::ArmWeapon`: пистолет на кости `hand_r`, хват от костей референсной позы; отдельные компоненты `LoadedMag` (магазин в шахте) и `SlideMesh` (затвор: копия меша пистолета, остальные слоты `M_FF_Invisible`). `KickSlide` на выстреле, задержка затвора после последнего патрона.
+- **Перезарядка.** `StartReloadMotion` запускает монтаж `AM_Reload_Freefall` с темпом под длительность. `FFallAnimProxy::LayerMontage` берёт позу дорожки монтажа и смешивает её по маске `UpperMask` (ключицы и всё ниже — полностью, `spine_05` 0,5, `spine_04` 0,25). Без монтажа (запись: `-FallBakeReload`) работает процедурный путь рук в `UpdateWeaponHands`. События (магазин наружу 0,1, новый в руке 0,36–0,68, затвор 0,78–0,86) идут по доле перезарядки в `UpdateWeaponProps`.
+- **Тандем.** `AFallPlayer` (блок `RobTime`): подлёт к спине носителя, `AFallEnemy::BeginTandem`, руки на лямках (`FallHarness`), кольцо, `AFallDirector::Deploy`. Носитель ставится каждый тик по кадру тела игрока (`TandemOffset`) и копирует его ориентацию. Раскрытие по `CanopyClock()`: мешок 0–0,3 с, вытягивание до 0,65 с, наполнение, рывок `CanopyShockTime` 0,9 с. Под куполом спуск сжат по времени и замедляется в последних 300 м.
+- **Свет.** Фиксированная экспозиция `ExposureEV`, локальная экспозиция, ACES с крутизной 0,95, контраст 1,25; контровой свет героя на канале освещения 1, привязан к штанге камеры; свет неба с отражённым от земли нижним полушарием.
+- **Ревью.** `-FallWeaponTest` (сценарий всех состояний, крупные планы), проверки оружия, перезарядки, отдачи и тандема в каждом прогоне (`FallReviewWeapon.cpp`), `-FallCloseups`, `-FallLookSun`, `-FallHaze`, `-FallEV`, `shots_index.json`. Карта `LookDev` (`Tools/make_lookdev.py`).

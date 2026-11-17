@@ -267,7 +267,9 @@ void AFallDebris::Tick(float Dt)
 			const FVector E = Box->GetUnscaledBoxExtent();
 			const FVector P = Box->GetComponentTransform().TransformPositionNoScale(FVector(FMath::FRandRange(-E.X, E.X) * 0.6f, FMath::FRandRange(-E.Y, E.Y) * 0.6f, E.Z));
 			// Flames are the attached Niagara fire (sprite flames read as a string of beads); smoke stays behind in the air.
-			FX->Sprite(P, FMath::VRand() * 100.f, 480.f, 1700.f, 2.4f, FLinearColor(0.06f, 0.055f, 0.05f), 0.45f, true, 1.f);
+			// Each wreck smokes its own way (size and shade per piece): four identical columns read as copies (round 12).
+			const float Var = 0.75f + 0.5f * FMath::Frac(GetUniqueID() * 0.618f);
+			FX->Sprite(P, FMath::VRand() * 100.f, 480.f * Var, 1700.f * Var, 2.4f * Var, FLinearColor(0.06f, 0.055f, 0.05f) * (0.7f + 0.6f * FMath::Frac(GetUniqueID() * 0.37f)), 0.45f, true, 1.f);
 		}
 	}
 }

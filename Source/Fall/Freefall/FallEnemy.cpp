@@ -583,7 +583,7 @@ void AFallEnemy::TickTarget(float Dt, AFallPlayer* P)
 		FlareTimer = 0.025f;
 		const float Near = FMath::SmoothStep(800.f, 1600.f, ToPlayer);
 		if (Near > 0.05f)
-			if (AFallFX* FX = AFallFX::Get(this)) FX->Sprite(Pack->GetComponentLocation(), FVector(0, 0, -OwnFall * 0.7f), 160.f, 420.f, 1.3f, FLinearColor(1.f, 0.85f, 0.3f), 0.35f * Near, true, 2.f); // big from the start: small puffs read as beads
+			if (AFallFX* FX = AFallFX::Get(this)) FX->Sprite(Pack->GetComponentLocation(), FVector(0, 0, -OwnFall * 0.7f), 90.f, 300.f, 1.1f, FLinearColor(1.f, 0.85f, 0.3f), 0.25f * Near, true, 1.6f); // a thin flare, not a sausage (round 10) // big from the start: small puffs read as beads
 	}
 	const FVector PP = P->GetActorLocation();
 	const FVector ToP = PP - GetActorLocation();

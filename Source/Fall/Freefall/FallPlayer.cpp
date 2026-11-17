@@ -4,6 +4,7 @@
 #include "FallAudio.h"
 #include "FallStraps.h"
 #include "FallDebris.h"
+#include "FallAirship.h"
 #include "FallFX.h"
 #include "EngineUtils.h"
 #include "FallEnemy.h"
@@ -178,7 +179,7 @@ void AFallPlayer::BeginPlay()
 		FPostProcessSettings& PS = Camera->PostProcessSettings;
 		PS.bOverride_ColorGainShadows = true; PS.ColorGainShadows = FVector4(0.94f, 0.98f, 1.08f, 1.f);
 		PS.bOverride_ColorGainHighlights = true; PS.ColorGainHighlights = FVector4(1.07f, 1.0f, 0.9f, 1.f);
-		PS.bOverride_BloomIntensity = true; PS.BloomIntensity = 0.6f;
+		PS.bOverride_BloomIntensity = true; PS.BloomIntensity = 0.9f;
 		float EV = ExposureEV;
 		if (FParse::Value(FCommandLine::Get(), TEXT("FallEV="), EV)) ExposureEV = EV;
 		PS.AutoExposureBias = ExposureEV;
@@ -769,7 +770,7 @@ void AFallPlayer::UpdateCombat(float Dt)
 	DamagePulse = FMath::FInterpTo(DamagePulse, 0.f, Dt, 2.5f);
 	const float Low = 1.f - FMath::Clamp(Health / MaxHealth, 0.f, 1.f);
 	Camera->PostProcessSettings.bOverride_VignetteIntensity = true;
-	Camera->PostProcessSettings.VignetteIntensity = 0.15f + FMath::Min(DamagePulse * 0.5f + Low * 0.25f, 0.35f);
+	Camera->PostProcessSettings.VignetteIntensity = 0.08f + FMath::Min(DamagePulse * 0.5f + Low * 0.25f, 0.35f);
 	Camera->PostProcessSettings.bOverride_SceneColorTint = true;
 	Camera->PostProcessSettings.SceneColorTint = FLinearColor(1.f, 1.f - DamagePulse * 0.35f, 1.f - DamagePulse * 0.4f);
 	Camera->PostProcessSettings.bOverride_ColorSaturation = true;
@@ -850,12 +851,12 @@ void AFallPlayer::UpdateCamera(float Dt)
 	{
 		const FVector CamPos = Camera->GetComponentLocation();
 		float MinD = 1e9f;
-		for (const TCHAR* B : {TEXT("head"), TEXT("spine_03"), TEXT("pelvis"), TEXT("hand_l"), TEXT("hand_r"), TEXT("foot_l"), TEXT("foot_r"), TEXT("calf_l"), TEXT("calf_r"), TEXT("lowerarm_l"), TEXT("lowerarm_r")})
+		for (const TCHAR* B : {TEXT("head"), TEXT("spine_03"), TEXT("pelvis"), TEXT("hand_l"), TEXT("hand_r"), TEXT("foot_l"), TEXT("foot_r"), TEXT("calf_l"), TEXT("calf_r"), TEXT("lowerarm_l"), TEXT("lowerarm_r"), TEXT("ball_l"), TEXT("ball_r"), TEXT("thigh_l"), TEXT("thigh_r")})
 		{
 			MinD = FMath::Min(MinD, (float)FVector::Dist(CamPos, Mesh->GetSocketLocation(B)));
 			if (const AFallEnemy* T = RobTarget.Get()) if (T->IsTandem()) MinD = FMath::Min(MinD, (float)FVector::Dist(CamPos, T->Mesh->GetSocketLocation(B))); // the hooked carrier too
 		}
-		CamPush = FMath::FInterpTo(CamPush, FMath::Max(0.f, 70.f - MinD) * 2.5f, Dt, 10.f);
+		CamPush = FMath::FInterpTo(CamPush, FMath::Max(0.f, 140.f - MinD) * 2.5f, Dt, 12.f); // 70 and 110 still let a sleeve or a boot fill the frame (rounds 10-13)
 		CameraArm->TargetArmLength += CamPush;
 		// Big hollow pieces (envelope, hull) have no collision for the camera probe: when the camera ends up inside
 		// one, that piece is hidden from this view until the camera is out (a frame of inside-out shell otherwise).
@@ -864,9 +865,14 @@ void AFallPlayer::UpdateCamera(float Dt)
 			UStaticMeshComponent* C = CamHidden[i].Get();
 			if (!C || !C->Bounds.GetBox().ExpandBy(100.f).IsInside(CamPos)) { if (C) C->SetVisibility(true); CamHidden.RemoveAt(i); }
 		}
-		for (TActorIterator<AFallDebris> It(GetWorld()); It; ++It)
+		// Debris pieces and the airship's own broken parts (the torn envelope stays part of the airship actor).
+		TArray<AActor*> Near;
+		for (TActorIterator<AFallDebris> It(GetWorld()); It; ++It) Near.Add(*It);
+		for (TActorIterator<AFallAirship> It(GetWorld()); It; ++It) Near.Add(*It);
+		if (AFallEnemy* T = RobTarget.Get()) if (T->IsTandem()) Near.Add(T); // the carrier's big container in the tandem shot
+		for (AActor* It : Near)
 		{
-			if (FVector::DistSquared(It->GetActorLocation(), CamPos) > FMath::Square(4000.f)) continue;
+			if (It->IsA<AFallDebris>() && FVector::DistSquared(It->GetActorLocation(), CamPos) > FMath::Square(4000.f)) continue;
 			TArray<UStaticMeshComponent*> Comps;
 			It->GetComponents(Comps);
 			for (UStaticMeshComponent* C : Comps)
@@ -898,7 +904,7 @@ void AFallPlayer::UpdateCamera(float Dt)
 	}
 	if (ScreenWind)
 	{
-		ScreenWind->SetScalarParameterValue("Strength", 0.55f * FMath::SmoothStep(0.55f, 1.f, SpeedN) * (1.f - CanopyCam) + FovKick * 0.02f); // radial smear only at the top speeds, and lighter
+		ScreenWind->SetScalarParameterValue("Strength", 0.3f * FMath::SmoothStep(0.6f, 1.f, SpeedN) * (1.f - CanopyCam) + FovKick * 0.02f); // radial smear only at the top speeds, and light
 		ScreenWind->SetScalarParameterValue("Frost", Frost * 0.6f);
 		ScreenWind->SetScalarParameterValue("Veil", CloudVeil * 0.45f);
 	}

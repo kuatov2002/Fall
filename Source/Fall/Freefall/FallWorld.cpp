@@ -101,7 +101,7 @@ namespace
 		C = FMath::Lerp(C, Scree, FMath::SmoothStep(2250.f, 2550.f, H + Noise * 200.f));
 		C = FMath::Lerp(C, Rock * (0.75f + 0.5f * FMath::Abs(Noise)), FMath::SmoothStep(0.3f, 0.6f, Slope));
 		// Snow below white and only on the gentler slopes: rock shows through on the steep faces (read as styrofoam).
-		C = FMath::Lerp(C, Snow, FMath::SmoothStep(2700.f, 2950.f, H + Noise * 250.f) * (1.f - FMath::SmoothStep(0.4f, 0.7f, Slope)));
+		C = FMath::Lerp(C, Snow, FMath::SmoothStep(2700.f, 2950.f, H + Noise * 250.f) * (1.f - FMath::SmoothStep(0.3f, 0.55f, Slope)));
 		return C;
 	}
 }
@@ -161,6 +161,7 @@ AFallPlanet::AFallPlanet()
 	// Sun to sky ratio raised (sun 13 lux on the engine's default scale, sky luminance 0.7): sunlit snow and rock
 	// reach real highlights while the sky near the horizon stops being the brightest thing in the frame.
 	Sun->SetIntensity(13.f);
+	Sun->SetLightSourceAngle(1.4f); // a softer, larger disc with a halo through the bloom ("a bare white dot", rounds 9-13)
 	Sun->SetLightColor(FLinearColor(1.f, 0.66f, 0.4f));
 	Sun->SetAtmosphereSunLight(true);
 	Sun->SetMobility(EComponentMobility::Movable);

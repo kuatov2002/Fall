@@ -41,3 +41,8 @@ Sky Atmosphere, Volumetric Cloud (`m_SimpleVolumetricCloud_Inst`), Exponential H
 
 ## Kimodo
 Не использовался (DECISIONS.md, D-026).
+
+## Итерация 3
+- Купол: текстура Poly Haven Hessian 380 (colormass, Rico Cilliers) на материале ткани. Ближняя детализация рельефа: Poly Haven Rock 06 (Rob Tuytel).
+- Референсы AAA для анализа и критика: 14 официальных скриншотов со страниц Steam (Just Cause 3 и 4, Battlefield 1, 4 и 2042, Far Cry 5, Halo Infinite). Лежат в `Saved/Review/References` (вне git и вне сборки), в игре не используются. Права принадлежат их владельцам.
+- Превью персонажа с Fab (Red Mallet Studio) скачано только для сравнения в `Saved/Review/IT3/lookdev/fab`, в игре не используется.

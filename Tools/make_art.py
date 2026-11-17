@@ -50,8 +50,8 @@ base = '/Game/RetroFuturisticSoldier/Materials/M_RetroSoldier'
 # Canopy: light woven fabric on the foliage-shaded fabric material, the sun shines through it from behind
 # (a flat emissive colour read as plastic, a two-sided opaque one went black underneath; rounds 3-4).
 _hs = 'hessian_380'
-mats['CanopyFabric'] = mi('MI_CanopyFabric', '/Game/Freefall/Materials/M_FF_Fabric', {'Tiling': 6.0, 'RoughnessMul': 1.0, 'MetallicMul': 0.0, 'Transmission': 1.0},
-                          {'Tint': (1.0, 0.55, 0.22, 1)}, {'BaseColor': TX + _hs + '/' + _hs + '_diff_2k', 'Normal': TX + _hs + '/' + _hs + '_nor_gl_2k', 'ARM': TX + _hs + '/' + _hs + '_arm_2k'})
+mats['CanopyFabric'] = mi('MI_CanopyFabric', '/Game/Freefall/Materials/M_FF_Fabric', {'Tiling': 16.0, 'RoughnessMul': 1.0, 'MetallicMul': 0.0, 'Transmission': 1.0},
+                          {'Tint': (1.15, 0.62, 0.26, 1)}, {'BaseColor': TX + _hs + '/' + _hs + '_diff_2k', 'Normal': TX + _hs + '/' + _hs + '_nor_gl_2k', 'ARM': TX + _hs + '/' + _hs + '_arm_2k'})
 # Enemy accent lights at the player's level: at 25-40 the suits glowed like holograms (critic round 1).
 mi('MI_Char_Player', base, {'EmissionStrength': 1.6}, {'FabricColor': (0.03, 0.032, 0.035, 1), 'PrimaryColor': (1.0, 0.45, 0.12, 1)})  # dark suit like the asset; brown read as orange plastic
 mi('MI_Char_Shooter', base, {'EmissionStrength': 5.0}, {'FabricColor': (0.05, 0.06, 0.08, 1), 'PrimaryColor': (1.0, 0.02, 0.0, 1)})

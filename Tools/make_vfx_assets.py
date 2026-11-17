@@ -95,6 +95,14 @@ fine = tex('DetailFine', TX + 'aerial_grass_rock/aerial_grass_rock_diff_2k', unr
 depth = e(m, unreal.MaterialExpressionPixelDepth, -700, -500)
 far = tex('DetailFar', TX + 'aerial_rocks_02/aerial_rocks_02_diff_2k', unreal.MaterialSamplerType.SAMPLERTYPE_COLOR, 0.35, -700, 100)
 nrm = tex('Normal', TX + 'aerial_rocks_02/aerial_rocks_02_nor_gl_2k', unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL, 0.35, -700, 400)
+# A second, rotated and rescaled sample of the far texture breaks its 290 m repeat, seen from altitude as a diamond
+# grid (critic rounds 8-11).
+ruv = e(m, unreal.MaterialExpressionCustom, -950, 250, output_type=unreal.CustomMaterialOutputType.CMOT_FLOAT2, description='RotUV')
+ruv.set_editor_property('code', 'return float2(UV.x * 0.0866 - UV.y * 0.05, UV.x * 0.05 + UV.y * 0.0866) + 0.37;')
+_ri = unreal.CustomInput(); _ri.set_editor_property('input_name', 'UV'); ruv.set_editor_property('inputs', [_ri])
+mel.connect_material_expressions(tc, '', ruv, 'UV')
+far2 = e(m, unreal.MaterialExpressionTextureSampleParameter2D, -700, 250, parameter_name='DetailFar2', texture=unreal.load_asset(TX + 'aerial_rocks_02/aerial_rocks_02_diff_2k'), sampler_type=unreal.MaterialSamplerType.SAMPLERTYPE_COLOR)
+mel.connect_material_expressions(ruv, '', far2, 'UVs')
 vc = e(m, unreal.MaterialExpressionVertexColor, -700, -450)
 # Close range (landing, low canopy flight): grass and rock in world space every 6 m; from the ground the 3 m UV
 # detail alone read as soapy flat polygons (critic round 7).
@@ -111,18 +119,18 @@ cu.set_editor_property('code', '''
 float lfine = dot(Fine.rgb, float3(0.3, 0.59, 0.11));
 float nearW = 1.0 - smoothstep(20000.0, 60000.0, Depth); // the last few hundred metres get 3 m detail
 float lnear = lerp(dot(Near.rgb, float3(0.3, 0.59, 0.11)), lfine * 0.5 + dot(Near.rgb, float3(0.3, 0.59, 0.11)) * 0.5, nearW);
-float lfar = dot(Far.rgb, float3(0.3, 0.59, 0.11));
-float detail = lerp(1.0, (lnear * 0.55 + lfar * 0.45) * 2.6, 0.8);
+float lfar = lerp(dot(Far.rgb, float3(0.3, 0.59, 0.11)), dot(Far2.rgb, float3(0.3, 0.59, 0.11)), 0.5);
+float detail = lerp(1.0, (lnear * 0.55 + lfar * 0.45) * 2.6, 0.6); // 0.8 showed the tiling grid from altitude (round 10)
 float lclose = dot(Close.rgb, float3(0.3, 0.59, 0.11));
 float closeW = 1.0 - smoothstep(3000.0, 15000.0, Depth);
 detail = lerp(detail, detail * lclose * 2.4, closeW * 0.45);
 float snow = saturate((dot(VC.rgb, float3(0.33, 0.33, 0.33)) - 0.55) * 4.0);
 float3 tinted = VC.rgb * detail * lerp(float3(1,1,1), Near.rgb / max(lnear, 0.05), 0.35);
 // Snow is not plaster: wind crust and rock showing through (the far rock texture), a little below pure white.
-return lerp(tinted, VC.rgb * 0.9 * lerp(0.8, 1.03, lfar), snow);  // stronger variation read as carpet (round 8)
+return lerp(tinted, VC.rgb * 0.9 * lerp(0.7, 1.04, lfar), snow);  // between carpet (0.62) and plaster (0.8): rounds 8-13
 ''')
 ins = []
-for n in ('VC', 'Near', 'Far', 'Fine', 'Depth', 'Close'):
+for n in ('VC', 'Near', 'Far', 'Fine', 'Depth', 'Close', 'Far2'):
     ci = unreal.CustomInput(); ci.set_editor_property('input_name', n); ins.append(ci)
 cu.set_editor_property('inputs', ins)
 mel.connect_material_expressions(vc, '', cu, 'VC')
@@ -131,6 +139,7 @@ mel.connect_material_expressions(far, 'RGB', cu, 'Far')
 mel.connect_material_expressions(fine, 'RGB', cu, 'Fine')
 mel.connect_material_expressions(depth, '', cu, 'Depth')
 mel.connect_material_expressions(close, 'RGB', cu, 'Close')
+mel.connect_material_expressions(far2, 'RGB', cu, 'Far2')
 mel.connect_material_property(cu, '', MP.MP_BASE_COLOR)
 mel.connect_material_property(nrm, 'RGB', MP.MP_NORMAL)
 mel.connect_material_property(sparam(m, 'Roughness', 0.92, -350, 200), '', MP.MP_ROUGHNESS)
