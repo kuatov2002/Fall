@@ -162,7 +162,7 @@ public:
 	/** Bits of envelope fabric tumbling past, mostly near the airship. */
 	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumScraps = 14;
 
-	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumStreaks = 70;
+	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumStreaks = 40;
 	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D StreakRadius = FVector2D(280.f, 1300.f);
 	UPROPERTY(EditAnywhere, Category = "Fall") float StreakHalfHeight = 2600.f;
 	/** Streak length = fall speed * this, seconds of motion blur. */

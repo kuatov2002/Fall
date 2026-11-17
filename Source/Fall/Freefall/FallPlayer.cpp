@@ -94,6 +94,8 @@ void AFallPlayer::BeginPlay()
 		PC->bShowMouseCursor = false;
 		PC->SetControlRotation(FRotator(-12.f, 0.f, 0.f));
 	}
+	HitFlashScale = 0.3f;
+	HitFlashColor = FLinearColor(1.f, 0.3f, 0.15f);
 	WindWave = NewObject<UFallWindWave>(this);
 	WindAudio->SetSound(WindWave);
 	WindAudio->Play();

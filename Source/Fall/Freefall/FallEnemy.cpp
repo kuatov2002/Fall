@@ -197,7 +197,7 @@ void AFallEnemy::BuildOutfit()
 	}
 	if (T == EFallEnemyType::Target)
 	{
-		Pack = AttachMesh("spine_03", Art->ParachuteContainer.LoadSynchronous(), FVector(0, -14.f, 2.f), FRotator(0.f, 180.f, 0.f), 1.05f);
+		Pack = AttachMesh("spine_03", Art->ParachuteContainer.LoadSynchronous(), FVector(0, -16.f, 2.f), FRotator(0.f, 180.f, 0.f), 1.45f);
 	}
 	if (T == EFallEnemyType::Shooter || T == EFallEnemyType::Target || T == EFallEnemyType::Wingsuiter)
 	{

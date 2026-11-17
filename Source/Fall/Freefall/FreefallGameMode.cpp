@@ -82,6 +82,8 @@ void AFallHUD::DrawHUD()
 		DrawRect(C, 0.f, 0.f, Canvas->ClipX, Canvas->ClipY);
 	}
 	if (!bVisible || FadeAlpha > 0.6f) return;
+	// No crosshair in the cutscene or under the canopy: nothing to shoot there.
+	if (const AFallPlayer* PP = Cast<AFallPlayer>(GetOwningPawn())) if (PP->bInIntro || PP->bCanopy) return;
 	Spread = FMath::FInterpTo(Spread, 0.f, Dt, 8.f);
 	HitPulse = FMath::FInterpTo(HitPulse, 0.f, Dt, 10.f);
 	KillPulse = FMath::FInterpTo(KillPulse, 0.f, Dt, 5.f);

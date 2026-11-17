@@ -288,8 +288,16 @@ void FFallAnimProxy::SolveLimb(FLimbRef& L, const FFallLimb& P, const FVector Ax
 	// Aim: right arm points at the target, elbow almost straight.
 	if (L.bArm && L.bRight && In.AimWeight > 0.f)
 	{
-		const FVector Aim = (In.AimPointCS - RootPos).GetSafeNormal(UE_SMALL_NUMBER, DU);
-		const FVector AU = (Aim - Axes[kUp] * 0.22f - Axes[kRight] * 0.15f).GetSafeNormal(); // soft elbow, ~160 deg
+		// A belly-to-earth body cannot point a gun at its own feet, over its back or across to the left:
+		// the arm stops at the edge of that cone (Axes[kRight] is the subject's left inside the proxy).
+		FVector Aim = (In.AimPointCS - RootPos).GetSafeNormal(UE_SMALL_NUMBER, DU);
+		{
+			const float Au = FMath::Max((float)(Aim | Axes[kUp]), 0.15f); // always a little forward, never back along the body
+			const float Af = FMath::Clamp((float)(Aim | Axes[kFront]), -0.3f, 0.7f); // not straight under the chest either
+			const float Al = FMath::Min((float)(Aim | Axes[kRight]), 0.35f);
+			Aim = (Axes[kUp] * Au + Axes[kFront] * Af + Axes[kRight] * Al).GetSafeNormal(UE_SMALL_NUMBER, Aim);
+		}
+		const FVector AU = (Aim - Axes[kUp] * 0.22f - Axes[kRight] * 0.3f).GetSafeNormal(); // soft elbow, ~160 deg, upper arm out to the side
 		const float W = Smooth(In.AimWeight);
 		DU = FMath::Lerp(DU, AU, W).GetSafeNormal();
 		DL = FMath::Lerp(DL, Aim, W).GetSafeNormal();
@@ -511,7 +519,7 @@ bool FFallAnimProxy::Evaluate(FPoseContext& Output)
 			if (SpringValid[i])
 			{
 				SpringW[i] += GustKick * 1.2f + HitAxis * 1.4f;
-				if (L.bArm && L.bRight && In.Recoil > 0.f) SpringW[i] += (L.TU ^ Chest[kUp]).GetSafeNormal() * In.Recoil * 6.f; // the arm rises with the shot
+				if (L.bArm && L.bRight && In.Recoil > 0.f) SpringW[i] += (L.TU ^ Chest[kUp]).GetSafeNormal() * In.Recoil * 2.f; // the arm rises with the shot
 			}
 			Rot = Flutter(i, G.NoiseDeg.Y * 0.3f * In.Wind * FlutterMul) * Spring(i, Noise(i, FMath::Lerp(G.NoiseDeg.X, G.NoiseDeg.Y, In.Wind) * NoiseMul) * T, G, StiffMul * (bKickLeg ? 3.f : 1.f), Dt);
 			break;
@@ -538,14 +546,17 @@ bool FFallAnimProxy::Evaluate(FPoseContext& Output)
 			const FQuat LowerDelta = OutCS[L.Lower].GetRotation() * RefCS[L.Lower].GetRotation().Inverse();
 			const FVector HingeNow = LowerDelta.RotateVector(L.Hinge);
 			const FVector DirNow = LowerDelta.RotateVector(L.DirL);
-			const FQuat T = FQuat(DirNow, FMath::DegreesToRadians(L.Twist)) * FQuat(HingeNow, FMath::DegreesToRadians(L.Flex)) * Inherit.GetRotation();
+			// The gun hand keeps a straight wrist: the barrel continues the forearm, no wind noise on it.
+			const bool bGunHand = L.bArm && L.bRight && In.bGunInRight;
+			const FQuat T = bGunHand ? Inherit.GetRotation() : FQuat(DirNow, FMath::DegreesToRadians(L.Twist)) * FQuat(HingeNow, FMath::DegreesToRadians(L.Flex)) * Inherit.GetRotation();
 			const FFallBoneGroupTuning& G = D->Group(EFallBoneGroup::Extremity);
 			if (SpringValid[i])
 			{
 				SpringW[i] += GustKick * 2.f;
-				if (L.bArm && L.bRight && In.Recoil > 0.f) SpringW[i] += (L.TL ^ Chest[kUp]).GetSafeNormal() * In.Recoil * 8.f; // muzzle flips up, wrist returns on the spring
+				if (L.bArm && L.bRight && In.Recoil > 0.f) SpringW[i] += (L.TL ^ Chest[kUp]).GetSafeNormal() * In.Recoil * 3.f; // muzzle flips up a few degrees, wrist returns on the spring
 			}
-			Rot = Flutter(i, G.NoiseDeg.Y * 0.3f * In.Wind * FlutterMul) * Spring(i, Noise(i, FMath::Lerp(G.NoiseDeg.X, G.NoiseDeg.Y, In.Wind) * NoiseMul) * T, G, StiffMul, Dt);
+			const float HandNoise = bGunHand ? 0.1f : 1.f;
+			Rot = Flutter(i, G.NoiseDeg.Y * 0.3f * In.Wind * FlutterMul * HandNoise) * Spring(i, Noise(i, FMath::Lerp(G.NoiseDeg.X, G.NoiseDeg.Y, In.Wind) * NoiseMul * HandNoise) * T, G, StiffMul * (bGunHand ? 2.f : 1.f), Dt);
 			break;
 		}
 		case ERole::Finger:

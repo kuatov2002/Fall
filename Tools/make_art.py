@@ -39,7 +39,7 @@ mats = {
     'Handle': ph('HandleRed', 1.0, (0.8, 0.05, 0.02, 1), set_id='metal_plate'),
     'CanopyFabric': ph('CanopyFabric', 8.0, (0.62, 0.12, 0.05, 1), two_sided=True, set_id='caban'),
     'Gunmetal': ph('Gunmetal', 1.0, (0.35, 0.35, 0.37, 1), set_id='metal_plate_02'),
-    'Olive': ph('OlivePaint', 1.0, (0.55, 0.6, 0.45, 1), set_id='green_metal_rust'),
+    'Olive': ph('OlivePaint', 1.0, (0.2, 0.22, 0.18, 1), set_id='green_metal_rust'),
 }
 ph('Leather', 2.0, set_id='fabric_leather_02')
 ph('RustPlate', 1.0, set_id='blue_metal_plate')
@@ -54,12 +54,13 @@ mi('MI_Char_Carrier', base, {'EmissionStrength': 25.0}, {'FabricColor': (0.06, 0
 
 # Blender meshes.
 SRC = os.path.join(PROJ, 'ThirdParty', 'Processed', 'Meshes')
+REIMPORT = ('SM_FF_Beam',)  # re-imported every run: its UVs were fixed after the first import
 for f in sorted(os.listdir(SRC)):
     if not f.endswith('.fbx'):
         continue
     name = os.path.splitext(f)[0]
     path = '/Game/Freefall/Assets/Meshes/' + name
-    if not eal.does_asset_exist(path):
+    if not eal.does_asset_exist(path) or name in REIMPORT:
         t = unreal.AssetImportTask()
         t.filename = os.path.join(SRC, f); t.destination_path = '/Game/Freefall/Assets/Meshes'; t.destination_name = name
         t.automated = True; t.replace_existing = True; t.save = False

@@ -147,6 +147,10 @@ public:
 
 protected:
 	struct FActiveWave { FFallDebrisWave Wave; float Age = 0.f; float Accum = 0.f; };
+	/** Fast hits by grabbable pieces wait a moment for a grab press before they land. */
+	struct FPendingHit { TWeakObjectPtr<AFallDebris> Piece; FVector Push; FVector RelV; float Strength = 0.f; float Time = 0.f; FVector Spark; };
+	TArray<FPendingHit> PendingHits;
+	void ApplyPlayerHit(AFallDebris* D, const FVector& Push, const FVector& RelV, float Strength, const FVector& S);
 	TArray<FActiveWave> Waves;
 	FRandomStream Rng;
 	int32 Seed = 1;

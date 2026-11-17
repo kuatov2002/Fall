@@ -212,7 +212,9 @@ void AFallAnimGallery::ApplyEntry(float Dt)
 	}
 	else if (Name.Contains(TEXT("17_aim")))
 	{
-		C.bAim = true; C.AimAt = FVector(1200.f, -200.f, -250.f + 150.f * FMath::Sin(t * 1.3f)); C.LookAt = C.AimAt;
+		// The target circles the body (left, behind, right, above), as it does in a fight.
+		const float A = t / 3.f * 2.f * PI;
+		C.bAim = true; C.AimAt = FVector(1200.f * FMath::Cos(A), 1200.f * FMath::Sin(A), -250.f + 700.f * FMath::Sin(A * 2.f)); C.LookAt = C.AimAt;
 	}
 	else if (Name.Contains(TEXT("13_wing"))) { C.Override = "Wingsuit"; C.OverrideTarget = 1.f; C.AirVelocity = FVector(-4000.f, 0, 3000.f); }
 	else if (Name.Contains(TEXT("14_limp"))) { C.Override = "Limp"; C.OverrideTarget = 1.f; }

@@ -330,7 +330,13 @@ void AFallReview::Tick(float DeltaSeconds)
 		FString Pair;
 		const float Pen = P->MeasureSelfIntersection(&Pair);
 		++SelfIntFrames;
-		if (Pen > 1.f) ++SelfIntBad;
+		if (Pen > 1.f)
+		{
+			++SelfIntBad;
+			const FString Ctx = P->IsReloading() ? TEXT("reload") : (P->IsHolding() ? TEXT("hold") : (P->Control.bAim ? TEXT("aim") : TEXT("free")));
+			SelfIntByCase.FindOrAdd(Pair + TEXT(" / ") + Ctx) += 1;
+			if (Pen > 4.f && T >= NextSelfShot) { NextSelfShot = T + 4.f; Shot(FString::Printf(TEXT("selfint_t%05.1f_%s"), T, *Pair.Replace(TEXT(" "), TEXT("_")))); }
+		}
 		if (Pen > SelfIntWorst) { SelfIntWorst = Pen; SelfIntPair = FString::Printf(TEXT("%s at %.1f s"), *Pair, T); }
 	}
 	if (Bot == TEXT("damage")) TickDamageTest(DeltaSeconds);
@@ -362,6 +368,9 @@ void AFallReview::WriteMetrics()
 		Root->SetNumberField(TEXT("self_intersection_bad_frames"), SelfIntBad);
 		Root->SetNumberField(TEXT("self_intersection_worst_cm"), SelfIntWorst);
 		Root->SetStringField(TEXT("self_intersection_worst"), SelfIntPair);
+		TSharedPtr<FJsonObject> SC = MakeShared<FJsonObject>();
+		for (const TPair<FString, int32>& Pr : SelfIntByCase) SC->SetNumberField(Pr.Key, Pr.Value);
+		Root->SetObjectField(TEXT("self_intersection_by_case"), SC);
 	}
 	Root->SetNumberField(TEXT("deaths"), Deaths);
 	if (Bot == TEXT("damage") || Bot == TEXT("grab"))

@@ -73,6 +73,19 @@ bpy.ops.mesh.primitive_plane_add(size=1)
 q = bpy.context.active_object; q.data.materials.clear(); mat(q, 'FX')
 export([q], 'SM_FF_Quad')
 q = box('beam', (1, 1, 1), material='FX')
+# UVs like the engine cube: every face 0..1, sides with V running down the Z axis (streak and laser
+# materials taper along V); a cross-shaped unwrap draws them as dashes.
+uvl = q.data.uv_layers.active.data
+for poly in q.data.polygons:
+    n = poly.normal
+    for li in poly.loop_indices:
+        co = q.data.vertices[q.data.loops[li].vertex_index].co
+        if abs(n.z) > 0.5:
+            uvl[li].uv = (co.x + 0.5, co.y + 0.5)
+        elif abs(n.x) > 0.5:
+            uvl[li].uv = (co.y + 0.5, 0.5 - co.z)
+        else:
+            uvl[li].uv = (co.x + 0.5, 0.5 - co.z)
 export([q], 'SM_FF_Beam')
 bpy.ops.mesh.primitive_uv_sphere_add(radius=0.5, segments=24, ring_count=12)
 q = bpy.context.active_object; q.data.materials.clear(); mat(q, 'FX')

@@ -383,6 +383,11 @@ void AFallSpeedField::Tick(float Dt)
 	APlayerCameraManager* Cam = UGameplayStatics::GetPlayerCameraManager(this, 0);
 	if (!FW || !Cam || Dt <= 0.f) return;
 	const FVector C = Cam->GetCameraLocation();
+	// Standing on the deck in the cutscene: no airflow to show.
+	const AFallPlayer* IntroP = Cast<AFallPlayer>(FW->Player.Get());
+	const bool bStill = IntroP && IntroP->bInIntro;
+	Streaks->SetVisibility(!bStill); Specks->SetVisibility(!bStill);
+	for (FScrap& Sc : Scraps) Sc.Comp->SetVisibility(!bStill);
 	const FVector Rel(-FW->PlayerVelocityH.X, -FW->PlayerVelocityH.Y, FW->PlayerFallSpeed); // air relative to the player
 	const float Speed = Rel.Size();
 	const float Len = FMath::Max(Speed * StreakBlur, 50.f);

@@ -225,7 +225,7 @@ void AFallBody::ArmWeapon()
 	const FVector H = Pos(TEXT("hand_r")), LA = Pos(TEXT("lowerarm_r")), Mid = Pos(TEXT("middle_01_r")), Idx = Pos(TEXT("index_01_r")), Pnk = Pos(TEXT("pinky_01_r"));
 	// A real grip: the barrel continues the forearm (wrist straight), the slide sits on the thumb side,
 	// the grip lies across the palm under the knuckles.
-	const FVector Fwd = ((H - LA).GetSafeNormal() * 0.6f + (Mid - H).GetSafeNormal() * 0.4f).GetSafeNormal();
+	const FVector Fwd = (H - LA).GetSafeNormal(); // the wrist is held straight while armed
 	const FVector Across = (Idx - Pnk).GetSafeNormal();
 	const FVector Up = (Across - Fwd * (Across | Fwd)).GetSafeNormal();
 	const FVector Palm = ((Mid - H).GetSafeNormal() ^ Across).GetSafeNormal();
@@ -332,9 +332,9 @@ void AFallBody::UpdateWeaponHands(float Dt)
 		if (bOwnerLeft || bOwnerRight) return; // holding on to something: the hands are busy
 		// Gun low in front of the chest, well clear of the head; the left hand goes to the pouch on the left hip,
 		// comes back in front of the belly and seats the magazine from below. No point of the path is near the head.
-		Set(1, Chest + Front * 40.f + Right * 6.f - Up * 14.f, 1.f);
-		const FVector Pouch = Pel - Right * 17.f + Front * 11.f - Up * 2.f;
-		const FVector Belly = Chest + Front * 34.f - Right * 8.f - Up * 26.f;
+		Set(1, Chest + Front * 36.f + Right * 5.f + Up * 8.f, 1.f); // gun up in front of the chest, at chin height
+		const FVector Pouch = Pel - Right * 21.f + Front * 13.f - Up * 2.f;
+		const FVector Belly = Chest + Front * 22.f - Right * 26.f - Up * 10.f; // along the left side of the torso
 		const FVector Well = GT.TransformPosition(Art->PistolMagWell) - GunUp * 7.f;
 		const float t = ReloadT;
 		auto Seg = [](float x, float a, float b) { return FMath::SmoothStep(0.f, 1.f, FMath::Clamp((x - a) / (b - a), 0.f, 1.f)); };
@@ -347,11 +347,16 @@ void AFallBody::UpdateWeaponHands(float Dt)
 		if (SpareMag) SpareMag->SetVisibility(t > 0.3f && t < 0.8f);
 		return;
 	}
-	if (Control.bAim && !bOwnerLeft)
-	{
-		// Support hand cups the firing hand from the left, under the grip.
-		Set(0, GT.TransformPosition(Art->PistolGrip) - Right * 6.f - GunUp * 3.f + Front * 1.f, 1.f);
-	}
+	// Two hands only when the gun is out in front of the chest, clear of the head, and not pointing across the body
+	// to the left; otherwise one-handed, as people shoot at targets beside or behind them.
+	const FVector Grip = GT.TransformPosition(Art->PistolGrip);
+	const FVector AimDir = MuzzleForward();
+	const bool bTwoHands = bTwoHandedAim && Control.bAim && !bOwnerLeft
+		&& FVector::Dist(Grip, Mesh->GetSocketLocation("head")) > 55.f
+		&& ((Grip - Chest) | Front) > 12.f
+		&& (AimDir | Right) > -0.25f;
+	SupportBlend = FMath::FInterpTo(SupportBlend, bTwoHands ? 1.f : 0.f, Dt, bTwoHands ? 6.f : 12.f);
+	if (SupportBlend > 0.02f) Set(0, Grip - Right * 6.f - GunUp * 5.5f + Front * 3.f, SupportBlend);
 	else Release(0);
 	Release(1);
 }
@@ -403,7 +408,7 @@ bool AFallBody::ReceiveHit(const FVector& PushDirWorld, float Strength, float Da
 	const FVector ChestLocal = AttQ.RotateVector(FVector::UpVector);
 	AttW += (ChestLocal ^ LocalPush) * Strength * 5.f;
 	Health = FMath::Max(0.f, Health - Damage);
-	Flash(FLinearColor(1.f, 0.95f, 0.9f), 0.7f + 0.3f * Strength);
+	Flash(HitFlashColor, (0.7f + 0.3f * Strength) * HitFlashScale);
 	return Health <= 0.f;
 }
 

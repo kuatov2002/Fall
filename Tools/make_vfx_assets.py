@@ -47,11 +47,11 @@ cu.set_editor_property('code', '''
 float2 c = float2(0.5, 0.5);
 float2 d = UV - c;
 float r = length(d * float2(1.6, 1.0));
-float k = Strength * smoothstep(0.3, 0.85, r);
+float k = Strength * smoothstep(0.45, 0.95, r);
 float3 acc = 0;
 [unroll] for (int i = 0; i < 10; i++)
 {
-    float s = 1.0 - k * 0.045 * i;
+    float s = 1.0 - k * 0.028 * i;
     acc += SceneTextureLookup(clamp(c + d * s, 0.001, 0.999), 14, false).rgb;
 }
 acc /= 10.0;

@@ -81,5 +81,7 @@ protected:
 	int32 SelfIntFrames = 0, SelfIntBad = 0;
 	float SelfIntWorst = 0.f;
 	FString SelfIntPair;
+	TMap<FString, int32> SelfIntByCase;
+	float NextSelfShot = 0.f;
 	float NextPrimScan = 0.f;
 };

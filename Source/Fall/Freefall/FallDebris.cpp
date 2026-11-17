@@ -263,7 +263,7 @@ void AFallDebris::Tick(float Dt)
 		SmokeTimer -= Dt;
 		if (FX && SmokeTimer <= 0.f)
 		{
-			SmokeTimer = 0.12f;
+			SmokeTimer = 0.05f; // dense enough to read as one trail, not a string of beads
 			const FVector E = Box->GetUnscaledBoxExtent();
 			const FVector P = Box->GetComponentTransform().TransformPositionNoScale(FVector(FMath::FRandRange(-E.X, E.X) * 0.6f, FMath::FRandRange(-E.Y, E.Y) * 0.6f, E.Z));
 			const float Own = Mover->FallSpeed;
@@ -271,7 +271,7 @@ void AFallDebris::Tick(float Dt)
 			const UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this);
 			const FVector PieceVel(Mover->VelocityH.X, Mover->VelocityH.Y, FW ? FW->PlayerFallSpeed - Own : 0.f);
 			FX->Sprite(P, PieceVel - FVector(0, 0, FW ? FW->PlayerFallSpeed : 0.f), 160.f, 70.f, 0.3f, FLinearColor(1.f, 0.42f, 0.08f), 0.9f, true, 9.f);
-			FX->Sprite(P, FMath::VRand() * 100.f, 180.f, 1100.f, 2.2f, FLinearColor(0.06f, 0.055f, 0.05f), 0.75f, true, 1.f);
+			FX->Sprite(P, FMath::VRand() * 100.f, 260.f, 1500.f, 2.4f, FLinearColor(0.06f, 0.055f, 0.05f), 0.55f, true, 1.f);
 		}
 	}
 }
@@ -328,6 +328,20 @@ AFallDebris* AFallDebrisSpawner::SpawnPiece(EFallDebrisType Type, const FVector&
 	D->Mover->Spin = FRotator(Rng.FRandRange(-SpinMax, SpinMax), Rng.FRandRange(-SpinMax, SpinMax), Rng.FRandRange(-SpinMax, SpinMax));
 	D->Mover->KillDistance = SpawnDepth * 1.3f;
 	return D;
+}
+
+void AFallDebrisSpawner::ApplyPlayerHit(AFallDebris* D, const FVector& Push, const FVector& RelV, float Strength, const FVector& S)
+{
+	UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this);
+	AFallPlayer* P = FW ? Cast<AFallPlayer>(FW->Player.Get()) : nullptr;
+	if (!P || !D) return;
+	P->ReceiveHit(Push + RelV.GetSafeNormal() * 0.5f, Strength, 6.f + 7.f * Strength);
+	P->AddHorizontalImpulse(FVector(Push.X, Push.Y, 0.f).GetSafeNormal() * 700.f * Strength);
+	P->AddShake(0.4f * Strength);
+	P->HitStop(0.05f + 0.02f * Strength);
+	FW->NoteEvent("DebrisHit");
+	if (AFallFX* FX = AFallFX::Get(this)) FX->Sparks(S, Push, 14, FLinearColor(1.f, 0.75f, 0.4f));
+	FallSynth::Play(this, FallSynth::EKind::HitMetal, S, 1.f, 1.f / FMath::Sqrt(D->Mass));
 }
 
 AFallDebris* AFallDebrisSpawner::SpawnMeshPiece(UStaticMesh* Mesh, const FTransform& World, const FVector& RelVelMS, float S, bool bGrab, float InMass, bool bHollow, bool bSpins, bool bBurning)
@@ -389,6 +403,17 @@ void AFallDebrisSpawner::Tick(float Dt)
 
 	// Collisions with bodies, and near passes for pacing metrics.
 	const float Now = GetWorld()->GetTimeSeconds();
+	if (AFallPlayer* PP = Cast<AFallPlayer>(FW->Player.Get()))
+	{
+		for (int32 i = PendingHits.Num() - 1; i >= 0; --i)
+		{
+			FPendingHit& H = PendingHits[i];
+			AFallDebris* D = H.Piece.Get();
+			if (!D || PP->Held.Get() == D || PP->IsDead()) { PendingHits.RemoveAt(i); continue; }
+			if (PP->WantsGrab() && !PP->IsHolding()) { PP->Grab(D); PendingHits.RemoveAt(i); continue; }
+			if (Now - H.Time >= 0.15f) { ApplyPlayerHit(D, H.Push, H.RelV, H.Strength, H.Spark); PendingHits.RemoveAt(i); }
+		}
+	}
 	for (TActorIterator<AFallDebris> It(GetWorld()); It; ++It)
 	{
 		AFallDebris* D = *It;
@@ -437,11 +462,11 @@ void AFallDebrisSpawner::Tick(float Dt)
 				D->LastHit = Now;
 				continue;
 			}
-			if (PL && D->bGrabbable)
+			if (PL && D->bGrabbable && !D->Holder.IsValid())
 			{
-				if (Now - D->PendingHit > 1.f) { D->PendingHit = Now; continue; }
-				if (Now - D->PendingHit < 0.15f) continue;
-				D->PendingHit = -10.f;
+				PendingHits.Add({D, Push, RelV, Strength, Now, S});
+				D->LastHit = Now;
+				break;
 			}
 			const bool bHeldPlatform = D->Holder.IsValid();
 			B->ReceiveHit(Push + RelV.GetSafeNormal() * 0.5f, Strength, bHeldPlatform ? 0.f : 6.f + 7.f * Strength);

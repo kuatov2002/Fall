@@ -102,6 +102,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fall")
 	float RimIntensity = 0.05f;
+	/** Hit flash strength: the player's own flash stays small (a white silhouette reads as a render bug). */
+	float HitFlashScale = 1.f;
+	FLinearColor HitFlashColor = FLinearColor(1.f, 0.95f, 0.9f);
 
 	/** Attach a basic-shape prop to a bone. Offset and rotation are in body space of the reference pose (X right, Y front, Z up). */
 	UStaticMeshComponent* AttachProp(FName Bone, const TCHAR* Shape, const FVector& Offset, const FRotator& BodyRot, const FVector& Size, const FLinearColor& Color, float Roughness = 0.7f, float Metallic = 0.f);
@@ -204,6 +207,10 @@ protected:
 	float ReloadT = -1.f, ReloadDur = 1.f;
 	FVector ReloadStartL = FVector::ZeroVector;
 	bool bWeaponHand[2] = {false, false};
+	float SupportBlend = 0.f;
+	/** Support hand on the grip while aiming. Off: belly to earth and aiming all round, the support arm crossed the
+	 *  face (self-intersection test, D-027); one-handed shooting with the free arm for balance reads right in freefall. */
+	bool bTwoHandedAim = false;
 
 	FQuat AttQ = FQuat::Identity;
 	FVector AttW = FVector::ZeroVector;
