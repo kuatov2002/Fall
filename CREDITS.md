@@ -25,7 +25,7 @@
 Скачиваются `Tools/fetch_bigsoundbank.py`. В срезе: Wind, Strong Wind #1, Whistling of the Wind #1 (три слоя ветра), Flag in the Wind #1 (хлопанье ткани), Flag #1 (хлопок купола), Wind from inside #1, Big Branching Fire #1, Evacuation Alarm #1 (катсцена). Остальные записи из списка скачаны для звуков ударов и пролётов, пока не подключены.
 
 ## Kenney (CC0, https://kenney.nl)
-Particle Pack, Smoke Particles, Impact Sounds, Sci-Fi Sounds скачаны `Tools/fetch_kenney.py`, в текущей сборке не используются.
+Скачиваются `Tools/fetch_kenney.py`. В срезе: Smoke Particles, клубы whitePuff00–15, собраны в атлас 4×4 `T_SmokeAtlas` (дым, огонь, облачные клочья через материал `M_FF_Sprite`). Particle Pack, Impact Sounds, Sci-Fi Sounds скачаны, пока не подключены.
 
 ## Рельеф
 Высоты долины Роны у Мартиньи (46,112° с. ш., 7,075° в. д.) и Альп вокруг на 440 км: тайлы Terrarium (Mapzen terrain tiles, AWS Open Data, https://registry.opendata.aws/terrain-tiles/). Источники данных в тайлах для этого района: SRTM (общественное достояние, NASA/USGS), EU-DEM (произведено с использованием данных Copernicus), ETOPO1 и другие по списку https://github.com/tilezen/joerd/blob/master/docs/attribution.md. Скачиваются `Tools/fetch_terrain.py`, запекаются в `DA_FallTerrain` скриптом `Tools/make_terrain.py`.

@@ -266,11 +266,7 @@ void AFallDebris::Tick(float Dt)
 			SmokeTimer = 0.05f; // dense enough to read as one trail, not a string of beads
 			const FVector E = Box->GetUnscaledBoxExtent();
 			const FVector P = Box->GetComponentTransform().TransformPositionNoScale(FVector(FMath::FRandRange(-E.X, E.X) * 0.6f, FMath::FRandRange(-E.Y, E.Y) * 0.6f, E.Z));
-			const float Own = Mover->FallSpeed;
-			// Fire sticks to the piece (moves with it), smoke is left behind in the air.
-			const UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this);
-			const FVector PieceVel(Mover->VelocityH.X, Mover->VelocityH.Y, FW ? FW->PlayerFallSpeed - Own : 0.f);
-			FX->Sprite(P, PieceVel - FVector(0, 0, FW ? FW->PlayerFallSpeed : 0.f), 160.f, 70.f, 0.3f, FLinearColor(1.f, 0.42f, 0.08f), 0.9f, true, 9.f);
+			// Flames are the attached Niagara fire (sprite flames read as a string of beads); smoke stays behind in the air.
 			FX->Sprite(P, FMath::VRand() * 100.f, 260.f, 1500.f, 2.4f, FLinearColor(0.06f, 0.055f, 0.05f), 0.55f, true, 1.f);
 		}
 	}

@@ -155,7 +155,7 @@ void AFallAirship::Tick(float Dt)
 			const FVector P = GetActorTransform().TransformPosition(FVector(FMath::FRandRange(-2500.f, 1500.f), FMath::FRandRange(-600.f, 600.f), FMath::FRandRange(-700.f, 700.f)));
 			const UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this);
 			const float Pl = FW ? FW->PlayerFallSpeed : 0.f;
-			FX->Sprite(P, FVector(0, 0, -Pl), 1100.f, 500.f, 0.4f, FLinearColor(1.f, 0.4f, 0.08f), 0.95f, true, 14.f);
+			FX->Sprite(P, FVector(0, 0, -Pl), 1100.f, 500.f, 0.4f, FLinearColor(1.f, 0.36f, 0.06f), 0.95f, true, 7.f);
 			FX->Sprite(P, FVector(0, 0, 400.f - Pl), 600.f, 2600.f, 3.f, FLinearColor(0.05f, 0.045f, 0.04f), 0.8f, true, 1.f);
 		}
 	}

@@ -124,37 +124,55 @@ i = sparam(m, 'Intensity', 1.5, -600, -60)
 out(m, mul(m, mul(m, c, i, -400, -150), pw, -250, 0), MP.MP_EMISSIVE_COLOR)
 finish(m)
 
-# Soft sprite: cloud wisps, smoke, fire. Camera-facing plane, radial falloff times animated noise.
+# Soft sprite: smoke, fire, wisps. A puff from a 4x4 atlas of real smoke puffs (Kenney, CC0), a different puff
+# and rotation per particle (Seed), light noise on top. A radial disc read as a string of beads.
+import os as _os
+_atlas = '/Game/Freefall/Assets/Textures/T_SmokeAtlas'
+if not unreal.EditorAssetLibrary.does_asset_exist(_atlas):
+    _t = unreal.AssetImportTask()
+    _t.filename = _os.path.join(unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir()), 'ThirdParty', 'Processed', 'Textures', 'T_SmokeAtlas.png')
+    _t.destination_path = '/Game/Freefall/Assets/Textures'
+    _t.destination_name = 'T_SmokeAtlas'
+    _t.automated = True
+    _t.save = True
+    at.import_asset_tasks([_t])
 m = mk('M_FF_Sprite')
 m.set_editor_property('shading_model', unreal.MaterialShadingModel.MSM_UNLIT)
 m.set_editor_property('blend_mode', unreal.BlendMode.BLEND_TRANSLUCENT)
 m.set_editor_property('two_sided', True)
 uv = e(m, unreal.MaterialExpressionTextureCoordinate, -1400, 0)
-half = e(m, unreal.MaterialExpressionConstant2Vector, -1400, 120, r=0.5, g=0.5)
-sub = bin(m, unreal.MaterialExpressionSubtract, uv, half, -1250, 40)
-ln = e(m, unreal.MaterialExpressionLength, -1100, 40)
-mel.connect_material_expressions(sub, '', ln, '')
-two = mul(m, ln, const(m, 2.0, -1100, 140), -950, 40)
-inv = e(m, unreal.MaterialExpressionOneMinus, -800, 40)
-mel.connect_material_expressions(two, '', inv, '')
-sat = e(m, unreal.MaterialExpressionSaturate, -680, 40)
-mel.connect_material_expressions(inv, '', sat, '')
-pw = e(m, unreal.MaterialExpressionPower, -550, 40)
-mel.connect_material_expressions(sat, '', pw, 'Base')
-mel.connect_material_expressions(sparam(m, 'Softness', 1.6, -700, 160), '', pw, 'Exp')
+seed = sparam(m, 'Seed', 0.0, -1400, 120)
+cu = e(m, unreal.MaterialExpressionCustom, -1150, 0, output_type=unreal.CustomMaterialOutputType.CMOT_FLOAT2, description='PuffUV')
+cu.set_editor_property('code', (
+    'float a = Seed * 2.399;\n'
+    'float2 d = UV - 0.5;\n'
+    'float2 r = float2(d.x * cos(a) - d.y * sin(a), d.x * sin(a) + d.y * cos(a)) + 0.5;\n'
+    'float v = floor(frac(Seed * 0.618) * 16.0);\n'
+    'float2 cell = float2(fmod(v, 4.0), floor(v / 4.0));\n'
+    'return (saturate(r) * 0.94 + 0.03 + cell) / 4.0;'))
+_ins = []
+for _n in ('UV', 'Seed'):
+    _c = unreal.CustomInput()
+    _c.set_editor_property('input_name', _n)
+    _ins.append(_c)
+cu.set_editor_property('inputs', _ins)
+mel.connect_material_expressions(uv, '', cu, 'UV')
+mel.connect_material_expressions(seed, '', cu, 'Seed')
+tex = e(m, unreal.MaterialExpressionTextureSampleParameter2D, -900, 0, parameter_name='Puffs', texture=unreal.load_asset(_atlas))
+mel.connect_material_expressions(cu, '', tex, 'UVs')
 uvs = mul(m, uv, sparam(m, 'NoiseScale', 3.0, -1400, 300), -1250, 260)
 tms = mul(m, e(m, unreal.MaterialExpressionTime, -1400, 480), sparam(m, 'NoiseSpeed', 0.15, -1400, 560), -1250, 480)
-z = bin(m, unreal.MaterialExpressionAdd, sparam(m, 'Seed', 0.0, -1400, 400), tms, -1100, 440)
+z = bin(m, unreal.MaterialExpressionAdd, seed, tms, -1100, 440)
 ap = e(m, unreal.MaterialExpressionAppendVector, -1000, 300)
 mel.connect_material_expressions(uvs, '', ap, 'A')
 mel.connect_material_expressions(z, '', ap, 'B')
-nz = e(m, unreal.MaterialExpressionNoise, -850, 300, scale=1.0, levels=4, output_min=0.0, output_max=1.0, turbulence=True)
+nz = e(m, unreal.MaterialExpressionNoise, -850, 300, scale=1.0, levels=3, output_min=0.0, output_max=1.0, turbulence=True)
 mel.connect_material_expressions(ap, '', nz, 'Position')
 nl = e(m, unreal.MaterialExpressionLinearInterpolate, -650, 300)
 mel.connect_material_expressions(const(m, 1.0, -800, 520), '', nl, 'A')
 mel.connect_material_expressions(nz, '', nl, 'B')
-mel.connect_material_expressions(sparam(m, 'NoiseAmount', 0.8, -850, 450), '', nl, 'Alpha')
-shape = mul(m, pw, nl, -450, 150)
+mel.connect_material_expressions(sparam(m, 'NoiseAmount', 0.3, -850, 450), '', nl, 'Alpha')
+shape = mul(m, tex, nl, -450, 150, 'A')
 op = mul(m, shape, sparam(m, 'Opacity', 0.6, -600, 620), -300, 200)
 op2 = mul(m, op, e(m, unreal.MaterialExpressionVertexColor, -600, 720), -200, 260, '', 'A')
 df = e(m, unreal.MaterialExpressionDepthFade, -100, 300)
@@ -163,9 +181,9 @@ mel.connect_material_expressions(sparam(m, 'FadeDistance', 300.0, -300, 420), ''
 out(m, df, MP.MP_OPACITY)
 col = vparam(m, 'Color', unreal.LinearColor(0.9, 0.92, 0.97, 1), -600, -200)
 shade = e(m, unreal.MaterialExpressionLinearInterpolate, -350, -120)
-mel.connect_material_expressions(mul(m, col, sparam(m, 'Shadow', 0.75, -600, -60), -450, -60), '', shade, 'A')
+mel.connect_material_expressions(mul(m, col, sparam(m, 'Shadow', 0.55, -600, -60), -450, -60), '', shade, 'A')
 mel.connect_material_expressions(col, '', shade, 'B')
-mel.connect_material_expressions(shape, '', shade, 'Alpha')
+mel.connect_material_expressions(tex, 'R', shade, 'Alpha')
 out(m, mul(m, shade, sparam(m, 'Emissive', 1.0, -350, 0), -200, -100), MP.MP_EMISSIVE_COLOR)
 finish(m)
 

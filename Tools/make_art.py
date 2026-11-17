@@ -39,7 +39,7 @@ mats = {
     'Handle': ph('HandleRed', 1.0, (0.8, 0.05, 0.02, 1), set_id='metal_plate'),
     'CanopyFabric': ph('CanopyFabric', 8.0, (0.62, 0.12, 0.05, 1), two_sided=True, set_id='caban'),
     'Gunmetal': ph('Gunmetal', 1.0, (0.35, 0.35, 0.37, 1), set_id='metal_plate_02'),
-    'Olive': ph('OlivePaint', 1.0, (0.2, 0.22, 0.18, 1), set_id='green_metal_rust'),
+    'Olive': ph('OlivePaint', 1.0, (0.4, 0.42, 0.34, 1), set_id='green_metal_rust'),
 }
 ph('Leather', 2.0, set_id='fabric_leather_02')
 ph('RustPlate', 1.0, set_id='blue_metal_plate')

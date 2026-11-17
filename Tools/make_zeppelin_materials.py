@@ -47,7 +47,8 @@ for slot, (prefix, metal) in SETS.items():
     name = 'MI_Zep_' + slot.replace('-', '').replace('__', '_')
     path = MP + '/' + name
     m = unreal.load_asset(path) if eal.does_asset_exist(path) else at.create_asset(name, MP, unreal.MaterialInstanceConstant, unreal.MaterialInstanceConstantFactoryNew())
-    m.set_editor_property('parent', unreal.load_asset('/Game/Freefall/Materials/M_FF_PBR'))
+    # The envelope is a thin shell: one-sided, its torn chunks showed loose triangles from inside.
+    m.set_editor_property('parent', unreal.load_asset('/Game/Freefall/Materials/' + ('M_FF_PBRTwoSided' if slot == 'balloon' else 'M_FF_PBR')))
     mel.set_material_instance_texture_parameter_value(m, 'BaseColor', unreal.load_asset(base))
     if nrm:
         mel.set_material_instance_texture_parameter_value(m, 'Normal', fix(nrm, True))

@@ -537,10 +537,10 @@ void AFallEnemy::TickTarget(float Dt, AFallPlayer* P)
 	const float ToPlayer = FVector::Dist(GetActorLocation(), P->GetActorLocation());
 	if (Pack && Pack->IsVisible() && FlareTimer <= 0.f && (State == EFallEnemyState::Flee || State == EFallEnemyState::Dead || State == EFallEnemyState::Stunned))
 	{
-		FlareTimer = 0.05f;
+		FlareTimer = 0.025f;
 		const float Near = FMath::SmoothStep(800.f, 1600.f, ToPlayer);
 		if (Near > 0.05f)
-			if (AFallFX* FX = AFallFX::Get(this)) FX->Sprite(Pack->GetComponentLocation(), FVector(0, 0, -OwnFall * 0.7f), 60.f, 420.f, 1.6f, FLinearColor(1.f, 0.75f, 0.1f), 0.85f * Near, true, 6.f);
+			if (AFallFX* FX = AFallFX::Get(this)) FX->Sprite(Pack->GetComponentLocation(), FVector(0, 0, -OwnFall * 0.7f), 220.f, 520.f, 1.6f, FLinearColor(1.f, 0.7f, 0.1f), 0.7f * Near, true, 4.f); // big from the start: small puffs read as beads
 	}
 	const FVector PP = P->GetActorLocation();
 	const FVector ToP = PP - GetActorLocation();

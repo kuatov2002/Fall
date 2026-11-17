@@ -162,7 +162,7 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<UInstancedStaticMeshComponent> Specks;
 	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumSpecks = 120;
 	/** Bits of envelope fabric tumbling past, mostly near the airship. */
-	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumScraps = 6;
+	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumScraps = 0; // small dark cards read as confetti
 
 	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumStreaks = 0; // long streaks read as scratches on the image; the specks carry the speed
 	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D StreakRadius = FVector2D(280.f, 1300.f);

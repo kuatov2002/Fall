@@ -435,7 +435,7 @@ void AFallPlayer::Fire()
 		FX->Tracer(Muzzle, Impact, W->TracerColor, 2.5f);
 		FX->Flash(Muzzle, 35.f, FLinearColor(1.f, 0.7f, 0.35f), 0.04f);
 		const UFallArtData* Art = UFallArtData::Get();
-		FX->SpawnOn(Art->MuzzleFlash.LoadSynchronous(), WeaponMesh, Muzzle, 0.6f, MuzzleForward().Rotation());
+		FX->SpawnOn(Art->MuzzleFlash.LoadSynchronous(), WeaponMesh, Muzzle, 0.28f, MuzzleForward().Rotation());
 		if (WeaponMesh)
 		{
 			const FTransform GT = WeaponMesh->GetComponentTransform();

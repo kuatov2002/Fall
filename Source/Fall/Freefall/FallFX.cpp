@@ -1,4 +1,5 @@
 #include "FallFX.h"
+#include "Components/PointLightComponent.h"
 #include "FallWorld.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -64,6 +65,18 @@ void AFallFX::BeginPlay()
 	for (FPart& P : Sprites) P.Comp = Make(Plane, SpriteMat, P.MID);
 	Flashes.SetNum(24);
 	for (FPart& P : Flashes) P.Comp = Make(Sphere, AddMat, P.MID);
+	for (int32 i = 0; i < Flashes.Num(); ++i)
+	{
+		UPointLightComponent* L = NewObject<UPointLightComponent>(this);
+		L->SetupAttachment(RootComponent);
+		L->SetUsingAbsoluteLocation(true);
+		L->SetIntensityUnits(ELightUnits::Candelas);
+		L->SetIntensity(0.f);
+		L->SetCastShadows(false);
+		L->SetVisibility(false); // an idle light still costs a deferred lighting pass
+		L->RegisterComponent();
+		FlashLights.Add(L);
+	}
 	SparkPool.SetNum(120);
 	for (FPart& P : SparkPool) P.Comp = Make(Cube, AddMat, P.MID);
 	if (UStaticMesh* Shell = Art->Casing.LoadSynchronous())
@@ -116,6 +129,8 @@ void AFallFX::Sprite(const FVector& Pos, const FVector& Vel, float Size0, float 
 		P->MID->SetScalarParameterValue("Emissive", Emissive);
 		P->MID->SetScalarParameterValue("FadeDistance", Size0 * 0.5f);
 		P->MID->SetScalarParameterValue("NoiseSpeed", 0.6f);
+		// Fire: the puff's thin edges go dark red, only the dense core burns bright.
+		P->MID->SetScalarParameterValue("Shadow", Emissive > 2.f ? 0.12f : 0.55f);
 	}
 	P->Comp->SetVisibility(true);
 }
@@ -126,8 +141,14 @@ void AFallFX::Flash(const FVector& Pos, float Size, const FLinearColor& Color, f
 	if (!P || !P->Comp) return;
 	P->Pos = Pos; P->Vel = FVector::ZeroVector; P->Age = 0.f; P->Life = Life; P->Size0 = Size; P->Size1 = Size * 1.6f;
 	P->Color = Color; P->Opacity = 1.f; P->bAir = false; P->bActive = true;
-	if (P->MID) P->MID->SetVectorParameterValue("Color", Color);
-	P->Comp->SetVisibility(true);
+	const int32 Idx = (int32)(P - Flashes.GetData());
+	if (FlashLights.IsValidIndex(Idx))
+	{
+		FlashLights[Idx]->SetWorldLocation(Pos);
+		FlashLights[Idx]->SetLightColor(Color);
+		FlashLights[Idx]->SetAttenuationRadius(FMath::Max(Size * 8.f, 800.f));
+		FlashLights[Idx]->SetVisibility(true);
+	}
 }
 
 void AFallFX::Sparks(const FVector& Pos, const FVector& Dir, int32 Count, const FLinearColor& Color, float Speed)
@@ -240,7 +261,7 @@ void AFallFX::Tick(float Dt)
 		P.Comp->SetWorldScale3D(FVector(S / 100.f, S / 100.f, 1.f));
 		if (P.MID)
 		{
-			const float Fade = FMath::Min(1.f, X * 8.f) * (1.f - X * X) * FMath::SmoothStep(80.f, 600.f, (float)D.Size());
+			const float Fade = FMath::Min(1.f, X * 8.f) * (1.f - X * X) * FMath::SmoothStep(S * 0.35f, S * 1.2f, (float)D.Size()); // a puff never fills the lens
 			P.MID->SetScalarParameterValue("Opacity", P.Opacity * Fade);
 			P.MID->SetScalarParameterValue("Emissive", P.Emissive * FMath::Lerp(1.f, 0.4f, X));
 		}
@@ -260,14 +281,11 @@ void AFallFX::Tick(float Dt)
 	{
 		if (!P.bActive) continue;
 		P.Age += Dt;
-		if (P.Age >= P.Life) { P.bActive = false; P.Comp->SetVisibility(false); continue; }
+		const int32 Idx = (int32)(&P - Flashes.GetData());
+		UPointLightComponent* L = FlashLights.IsValidIndex(Idx) ? FlashLights[Idx].Get() : nullptr;
+		if (P.Age >= P.Life) { P.bActive = false; if (L) L->SetVisibility(false); continue; }
 		const float X = P.Age / P.Life;
-		// Never let the flash swallow the camera: it stays smaller than the distance to the lens and dims up close.
-		const float CamDist = (float)FVector::Dist(P.Pos, C);
-		const float Size = FMath::Min(FMath::Lerp(P.Size0, P.Size1, X), CamDist * 0.7f);
-		P.Comp->SetWorldLocation(P.Pos);
-		P.Comp->SetWorldScale3D(FVector(Size / 100.f));
-		if (P.MID) P.MID->SetScalarParameterValue("Intensity", 12.f * (1.f - X) * FMath::SmoothStep(300.f, 2500.f, CamDist));
+		if (L) L->SetIntensity(FMath::Square(P.Size0) * 0.004f * FMath::Square(1.f - X)); // sun is 9 lux: a 9 m blast outshines it threefold at its own radius
 	}
 	for (FPart& P : SparkPool)
 	{

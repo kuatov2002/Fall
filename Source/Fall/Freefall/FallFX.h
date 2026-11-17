@@ -74,6 +74,8 @@ protected:
 	TArray<FPart> Sprites, Flashes, SparkPool;
 	TArray<FLine> Lines;
 	TArray<FPart> Casings;
+	/** Flashes are light only: a glowing ball read as a flat disc. One light per flash slot. */
+	UPROPERTY() TArray<TObjectPtr<class UPointLightComponent>> FlashLights;
 	int32 CasingCursor = 0;
 	int32 SpriteCursor = 0, FlashCursor = 0, SparkCursor = 0, LineCursor = 0;
 };
