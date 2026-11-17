@@ -26,6 +26,9 @@ protected:
 	void TickGrabTest(float Dt);
 	void ScanPrimitives();
 	void Shot(const FString& Name);
+	/** What each screenshot shows (critic sampling picks the key moments from this): shots_index.json. */
+	TArray<TSharedPtr<class FJsonValue>> ShotLog;
+	TSharedPtr<class FJsonObject> DescribeFrame();
 	void WriteMetrics();
 	// Weapon in hand (FallReviewWeapon.cpp)
 	FString WeaponProblem(AFallPlayer* P);
@@ -68,6 +71,7 @@ protected:
 	bool bAvg = false;
 	TArray<TPair<float, FFallInputFrame>> Delayed;
 	float GrabPressT = -10.f;
+	bool bFirstGrabDone = false;
 	bool bPassed = false;
 	int32 Deaths = 0;
 

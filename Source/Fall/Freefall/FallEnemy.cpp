@@ -53,9 +53,9 @@ AFallEnemy::AFallEnemy()
 {
 	AutoPossessAI = EAutoPossessAI::Disabled;
 	AIControllerClass = nullptr;
-	RimColor = FLinearColor(1.f, 0.3f, 0.2f);
+	RimColor = FLinearColor(1.f, 0.45f, 0.32f);
 	HarnessColor = FLinearColor(0.02f, 0.02f, 0.022f);
-	RimIntensity = 0.6f;
+	RimIntensity = 0.12f; // a hint of a warm edge; at 0.6 enemies read as selection highlights (critic round 2)
 }
 
 AFallEnemy* AFallEnemy::Spawn(UWorld* World, EFallEnemyType Type, const FVector& RelPos, UFallEnemyData* InData, bool bDummy)
@@ -580,7 +580,7 @@ void AFallEnemy::TickTarget(float Dt, AFallPlayer* P)
 		FlareTimer = 0.025f;
 		const float Near = FMath::SmoothStep(800.f, 1600.f, ToPlayer);
 		if (Near > 0.05f)
-			if (AFallFX* FX = AFallFX::Get(this)) FX->Sprite(Pack->GetComponentLocation(), FVector(0, 0, -OwnFall * 0.7f), 220.f, 520.f, 1.6f, FLinearColor(1.f, 0.7f, 0.1f), 0.7f * Near, true, 4.f); // big from the start: small puffs read as beads
+			if (AFallFX* FX = AFallFX::Get(this)) FX->Sprite(Pack->GetComponentLocation(), FVector(0, 0, -OwnFall * 0.7f), 220.f, 520.f, 1.6f, FLinearColor(1.f, 0.85f, 0.25f), 0.6f * Near, true, 3.f); // big from the start: small puffs read as beads
 	}
 	const FVector PP = P->GetActorLocation();
 	const FVector ToP = PP - GetActorLocation();
@@ -830,13 +830,13 @@ void AFallEnemy::TickWingsuiter(float Dt, AFallPlayer* P)
 		TrailTimer -= Dt;
 		if (TrailTimer <= 0.f)
 		{
-			TrailTimer = 0.025f;
+			TrailTimer = 0.016f;
 			if (AFallFX* FX = AFallFX::Get(this))
 			{
 				const float Pl = FW ? FW->PlayerFallSpeed : 5500.f;
 				for (const TCHAR* B : {TEXT("foot_l"), TEXT("foot_r")})
 				{
-					FX->Sprite(Mesh->GetSocketLocation(B), FVector(0, 0, Pl * 0.25f) - FVector(0, 0, Pl), 50.f, 260.f, 1.4f, FLinearColor(1.f, 0.35f, 0.2f), 0.8f, true, 3.f);
+					FX->Sprite(Mesh->GetSocketLocation(B), FVector(0, 0, Pl * 0.25f) - FVector(0, 0, Pl), 170.f, 420.f, 1.2f, FLinearColor(1.f, 0.35f, 0.2f), 0.45f, true, 2.5f); // each puff wider than the gap to the next: one trail, not beads
 				}
 			}
 		}

@@ -18,7 +18,9 @@
 #include "FallEnemy.h"
 #include "FallDebris.h"
 #include "FallDirector.h"
+#include "FallAirship.h"
 #include "Camera/CameraComponent.h"
+#include "Camera/CameraActor.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Components/InstancedStaticMeshComponent.h"
@@ -35,7 +37,7 @@ void AFallReview::BeginPlay()
 {
 	Super::BeginPlay();
 	const TCHAR* Cmd = FCommandLine::Get();
-	FParse::Value(Cmd, TEXT("FallReview="), Dir);
+	if (!FParse::Value(Cmd, TEXT("FallReview="), Dir)) { SetActorTickEnabled(false); return; } // placed in a map (LookDev) but not reviewing
 	FParse::Value(Cmd, TEXT("FallBot="), Bot);
 	FParse::Value(Cmd, TEXT("FallShot="), ShotEvery);
 	FParse::Value(Cmd, TEXT("FallDuration="), Duration);
@@ -129,9 +131,21 @@ void AFallReview::BotFull(float Dt, FFallInputFrame& Out)
 		Out.Look = FVector2D(FMath::Sin(BotClock * 0.3f) * 10.f * Dt, -CamRot.Pitch * 0.5f * Dt - 3.f * Dt);
 	}
 
+	// Right after the jump a player looks back up at the burning airship for a few seconds.
+	if (!P->bInIntro && T < AfterIntroUntil - 1.f)
+	{
+		for (TActorIterator<AFallAirship> It(GetWorld()); It; ++It)
+		{
+			const FRotator Want = (It->GetActorLocation() - P->Camera->GetComponentLocation()).Rotation();
+			const FRotator Cur = P->Camera->GetComponentRotation();
+			Out.Look = FVector2D(FRotator::NormalizeAxis(Want.Yaw - Cur.Yaw), FRotator::NormalizeAxis(Want.Pitch - Cur.Pitch)) * FMath::Min(1.f, Dt * 3.f);
+			break;
+		}
+	}
 	// Cover: grab a piece when an attack is announced, push off a couple of seconds later.
 	if (P->IsHolding())
 	{
+		bFirstGrabDone = true;
 		HoldTime += Dt;
 		Out.Dive = 0.f;
 		Out.Slide = 0.f;
@@ -142,7 +156,27 @@ void AFallReview::BotFull(float Dt, FFallInputFrame& Out)
 		HoldTime = 0.f;
 		if (!bAvg)
 		{
-			if ((bThreat || FMath::Fmod(BotClock, 17.f) < 0.1f) && P->FindGrabbable() && !bChase) Out.bGrab = !LastBot.bGrab;
+			// Like a player meeting the first walkway: it grabs the first piece in reach once, then for cover.
+			if ((bThreat || !bFirstGrabDone || FMath::Fmod(BotClock, 17.f) < 0.1f) && P->FindGrabbable() && !bChase) Out.bGrab = !LastBot.bGrab;
+			if (!bFirstGrabDone && !bChase && !bThreat)
+			{
+				// Steer to the nearest grabbable piece until the first grab.
+				AFallDebris* Near = nullptr; float ND = 2500.f;
+				for (TActorIterator<AFallDebris> It(GetWorld()); It; ++It)
+				{
+					if (!It->bGrabbable || It->Holder.IsValid()) continue;
+					const float D = It->DistanceTo(PP);
+					if (D < ND) { ND = D; Near = *It; }
+				}
+				if (Near)
+				{
+					const FVector To = Near->GetActorLocation() - PP;
+					const FVector Local = P->GetActorQuat().UnrotateVector(FVector(To.X, To.Y, 0.f));
+					Out.Slide = FMath::Clamp(Local.Y / 400.f, -1.f, 1.f);
+					Out.Dive = To.Z < -200.f ? 1.f : (To.Z > 200.f ? -1.f : 0.f);
+					if (ND < 800.f) Out.bGrab = !LastBot.bGrab;
+				}
+			}
 		}
 		else if (bThreat && !bChase)
 		{
@@ -245,6 +279,11 @@ void AFallReview::Shot(const FString& Name)
 	if (bPerf || bShotThisFrame) return;
 	bShotThisFrame = true;
 	FScreenshotRequest::RequestScreenshot(Dir / Name + TEXT(".png"), false, false);
+	if (TSharedPtr<FJsonObject> O = DescribeFrame())
+	{
+		O->SetStringField(TEXT("file"), Name + TEXT(".png"));
+		ShotLog.Add(MakeShared<FJsonValueObject>(O));
+	}
 }
 
 void AFallReview::Tick(float DeltaSeconds)
@@ -449,6 +488,12 @@ void AFallReview::WriteMetrics()
 	TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Out);
 	FJsonSerializer::Serialize(Root.ToSharedRef(), W);
 	FFileHelper::SaveStringToFile(Out, *(Dir / TEXT("metrics.json")));
+	{
+		FString Idx;
+		TSharedRef<TJsonWriter<>> IW = TJsonWriterFactory<>::Create(&Idx);
+		FJsonSerializer::Serialize(ShotLog, IW);
+		FFileHelper::SaveStringToFile(Idx, *(Dir / TEXT("shots_index.json")));
+	}
 	FFileHelper::SaveStringToFile(Out, *(StageDir / TEXT("metrics.json")));
 }
 

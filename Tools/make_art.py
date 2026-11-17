@@ -37,20 +37,23 @@ mats = {
     'Webbing': ph('Webbing', 6.0, (0.25, 0.22, 0.16, 1), set_id='hessian_380'),
     'Metal': ph('Metal', 1.0, (0.9, 0.9, 0.9, 1), set_id='metal_plate'),
     'Handle': ph('HandleRed', 1.0, (0.8, 0.05, 0.02, 1), set_id='metal_plate'),
-    'CanopyFabric': ph('CanopyFabric', 8.0, (0.62, 0.12, 0.05, 1), two_sided=True, set_id='caban'),
+    'CanopyFabric': None,
     'Gunmetal': ph('Gunmetal', 1.0, (0.35, 0.35, 0.37, 1), set_id='metal_plate_02'),
-    'Olive': ph('OlivePaint', 1.0, (0.4, 0.42, 0.34, 1), set_id='green_metal_rust'),
+    'Olive': ph('OlivePaint', 1.0, (0.78, 0.74, 0.62, 1), set_id='green_metal_rust'),  # the turret shield read as a black board (critic rounds 2-3)
 }
 ph('Leather', 2.0, set_id='fabric_leather_02')
 ph('RustPlate', 1.0, set_id='blue_metal_plate')
 
 # Character colour variants on the Retro Futuristic Soldier master: fabric and accent light.
 base = '/Game/RetroFuturisticSoldier/Materials/M_RetroSoldier'
-mi('MI_Char_Player', base, {'EmissionStrength': 4.0}, {'FabricColor': (0.13, 0.09, 0.05, 1), 'PrimaryColor': (1.0, 0.45, 0.12, 1)})
-mi('MI_Char_Shooter', base, {'EmissionStrength': 30.0}, {'FabricColor': (0.05, 0.06, 0.08, 1), 'PrimaryColor': (1.0, 0.02, 0.0, 1)})
-mi('MI_Char_Heavy', base, {'EmissionStrength': 40.0}, {'FabricColor': (0.025, 0.025, 0.03, 1), 'PrimaryColor': (1.0, 0.0, 0.0, 1)})
-mi('MI_Char_Wingsuit', base, {'EmissionStrength': 35.0}, {'FabricColor': (0.09, 0.1, 0.12, 1), 'PrimaryColor': (1.0, 0.05, 0.02, 1)})
-mi('MI_Char_Carrier', base, {'EmissionStrength': 25.0}, {'FabricColor': (0.06, 0.06, 0.065, 1), 'PrimaryColor': (1.0, 0.55, 0.0, 1)})
+# Canopy: ripstop seen against a low sun glows through (fake transmission as emission); a dark texture went black.
+mats['CanopyFabric'] = ph('CanopyFabric', 6.0, (1.0, 0.45, 0.14, 1), two_sided=True, set_id='hessian_380')  # light woven fabric, lit both sides: a flat emissive colour read as plastic (round 3)
+# Enemy accent lights at the player's level: at 25-40 the suits glowed like holograms (critic round 1).
+mi('MI_Char_Player', base, {'EmissionStrength': 4.0}, {'FabricColor': (0.03, 0.032, 0.035, 1), 'PrimaryColor': (1.0, 0.45, 0.12, 1)})  # dark suit like the asset; brown read as orange plastic
+mi('MI_Char_Shooter', base, {'EmissionStrength': 5.0}, {'FabricColor': (0.05, 0.06, 0.08, 1), 'PrimaryColor': (1.0, 0.02, 0.0, 1)})
+mi('MI_Char_Heavy', base, {'EmissionStrength': 6.0}, {'FabricColor': (0.025, 0.025, 0.03, 1), 'PrimaryColor': (1.0, 0.0, 0.0, 1)})
+mi('MI_Char_Wingsuit', base, {'EmissionStrength': 5.0}, {'FabricColor': (0.09, 0.1, 0.12, 1), 'PrimaryColor': (1.0, 0.05, 0.02, 1)})
+mi('MI_Char_Carrier', base, {'EmissionStrength': 4.0}, {'FabricColor': (0.06, 0.06, 0.065, 1), 'PrimaryColor': (1.0, 0.55, 0.0, 1)})
 
 # Blender meshes.
 SRC = os.path.join(PROJ, 'ThirdParty', 'Processed', 'Meshes')

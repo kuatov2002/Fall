@@ -55,6 +55,9 @@ for slot, (prefix, metal) in SETS.items():
     if arm:
         mel.set_material_instance_texture_parameter_value(m, 'ARM', fix(arm, False))
     mel.set_material_instance_scalar_parameter_value(m, 'MetallicMul', metal)
+    # Burning wreck, not a showroom: soot darkens and greys the pack's clean painted wood and metal (critic round 1).
+    mel.set_material_instance_vector_parameter_value(m, 'Tint', unreal.LinearColor(0.5, 0.47, 0.44, 1) if slot != 'balloon' else unreal.LinearColor(0.75, 0.72, 0.68, 1))
+    mel.set_material_instance_scalar_parameter_value(m, 'RoughnessMul', 1.15)
     eal.save_loaded_asset(m, False)
     made[slot] = m
 plain = unreal.load_asset(MP + '/MI_Gunmetal')

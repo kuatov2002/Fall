@@ -167,7 +167,7 @@ void AFallIntro::Throw()
 		if (APlayerController* PC = Cast<APlayerController>(P->GetController()))
 		{
 			if (SeqPlayer) SeqPlayer->Pause(); // the cine camera stays where it is and the view eases into the chase camera
-			PC->SetViewTargetWithBlend(P, 1.6f, VTBlend_EaseInOut, 2.f);
+			PC->SetViewTargetWithBlend(P, 0.9f, VTBlend_EaseInOut, 2.f); // longer, the blend lingered on a tiny figure far below
 		}
 	}
 	for (UAudioComponent* A : Ambience) if (A) A->FadeOut(1.2f, 0.f);
@@ -241,9 +241,13 @@ void AFallIntro::Tick(float Dt)
 			const float a = FMath::Clamp((T - Focal[k].X) / FMath::Max(Focal[k + 1].X - Focal[k].X, 0.01f), 0.f, 1.f);
 			Cine->GetCineCameraComponent()->SetCurrentFocalLength(FMath::Lerp(Focal[k].Y, Focal[k + 1].Y, FMath::SmoothStep(0.f, 1.f, a)));
 			Cine->GetCineCameraComponent()->FocusSettings.FocusMethod = ECameraFocusMethod::Disable;
-			// The sunlit deck is bright; keep the fire and the red lamp readable.
-			Cine->GetCineCameraComponent()->PostProcessSettings.bOverride_AutoExposureBias = true;
-			Cine->GetCineCameraComponent()->PostProcessSettings.AutoExposureBias = -1.f;
+			// The same fixed exposure as the game camera (no jump at the handover), a little darker on the sunlit deck
+			// so the fire and the red lamp read.
+			FPostProcessSettings& CP = Cine->GetCineCameraComponent()->PostProcessSettings;
+			CP.bOverride_AutoExposureMethod = true; CP.AutoExposureMethod = EAutoExposureMethod::AEM_Manual;
+			CP.bOverride_AutoExposureApplyPhysicalCameraExposure = true; CP.AutoExposureApplyPhysicalCameraExposure = false;
+			CP.bOverride_AutoExposureBias = true;
+			CP.AutoExposureBias = (P ? P->ExposureEV : 1.5f) - 0.8f;
 		}
 	}
 

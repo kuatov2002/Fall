@@ -54,7 +54,7 @@ UFallArtData::UFallArtData()
 	Add(Debris, T::Girder, {Zep(TEXT("Railing")), PH(TEXT("ladder_sectioned_01"), TEXT("ladder_section_01")), PH(TEXT("modular_fire_escape"), TEXT("modular_fire_escape_ladder_bottom"))}, 1.f, true, 1.5f);
 	Add(Debris, T::Ductwork, {PH(TEXT("modular_airduct_circular_01"), TEXT("modular_airduct_circular_triple")), PH(TEXT("modular_airduct_rectangular_01"), TEXT("modular_airduct_rectangular_01_tripple_01")),
 		PH(TEXT("modular_airduct_rectangular_01"), TEXT("modular_airduct_rectangular_01_transition_double_01")), PH(TEXT("modular_industrial_pipes_01"), TEXT("modular_industrial_pipes_01_pipe02")),
-		PH(TEXT("modular_industrial_pipes_01"), TEXT("modular_industrial_pipes_01_pipe03")), Zep(TEXT("SupplyPipe"))}, 1.6f, true, 1.2f);
+		PH(TEXT("modular_industrial_pipes_01"), TEXT("modular_industrial_pipes_01_pipe03"))}, 1.6f, true, 1.2f);
 	Add(Debris, T::Engine, {Zep(TEXT("Generator")), PH(TEXT("old_military_compressor"), TEXT("old_military_compressor_2k")), PH(TEXT("portable_generator"), TEXT("portable_generator")),
 		PH(TEXT("exterior_aircon_unit"), TEXT("exterior_aircon_unit_rusted"))}, 1.4f, true, 3.f);
 	Add(Debris, T::Searchlight, {Zep(TEXT("Searchlight")), PH(TEXT("hanging_industrial_lamp"), TEXT("hanging_industrial_lamp_2k"))}, 1.f, false, 2.f);

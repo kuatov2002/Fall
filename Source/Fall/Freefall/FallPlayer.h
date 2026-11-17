@@ -43,6 +43,9 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Fall") TObjectPtr<USpringArmComponent> CameraArm;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Fall") TObjectPtr<UCameraComponent> Camera;
+	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<class USpotLightComponent> RimLight;
+	/** Fixed exposure, EV100 offset of the manual exposure (ART_DIRECTION.md). */
+	UPROPERTY(EditAnywhere, Category = "Fall") float ExposureEV = 1.0f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Fall") TObjectPtr<UAudioComponent> WindAudio;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Fall") TObjectPtr<class UPointLightComponent> FillLight;
 
@@ -92,6 +95,7 @@ public:
 	/** Debris piece the player holds, if any. */
 	TWeakObjectPtr<AFallDebris> Held;
 	bool IsHolding() const { return Held.IsValid(); }
+	float GetCloudVeil() const { return CloudVeil; }
 	void Grab(AFallDebris* Piece);
 	void Release();
 	void PushOff();
@@ -143,6 +147,8 @@ protected:
 	float DamagePulse = 0.f;
 	float RobTime = -1.f;
 	float TandemCam = 0.f;
+	float CamPush = 0.f;
+	TArray<TWeakObjectPtr<UStaticMeshComponent>> CamHidden;
 	bool bKickApplied = false;
 
 	UPROPERTY() TObjectPtr<UFallWindWave> WindWave;

@@ -61,7 +61,7 @@ void AFallFX::BeginPlay()
 		Owned.Add(C);
 		return C;
 	};
-	Sprites.SetNum(140);
+	Sprites.SetNum(280); // smoke trails need the overlap: with 140 the oldest puffs were recycled and trails broke into beads
 	for (FPart& P : Sprites) P.Comp = Make(Plane, SpriteMat, P.MID);
 	Flashes.SetNum(24);
 	for (FPart& P : Flashes) P.Comp = Make(Sphere, AddMat, P.MID);

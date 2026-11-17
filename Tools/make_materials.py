@@ -178,7 +178,17 @@ nl = e(m, unreal.MaterialExpressionLinearInterpolate, -650, 300)
 mel.connect_material_expressions(const(m, 1.0, -800, 520), '', nl, 'A')
 mel.connect_material_expressions(nz, '', nl, 'B')
 mel.connect_material_expressions(sparam(m, 'NoiseAmount', 0.3, -850, 450), '', nl, 'Alpha')
-shape = mul(m, tex, nl, -450, 150, 'A')
+# Softer than the atlas: the puffs' own edges are drawn hard (cartoon smoke); a power on alpha and a radial falloff
+# turn them into soft cloud (critic round 2: "white stickers with hard edges").
+soft = e(m, unreal.MaterialExpressionCustom, -650, 120, output_type=unreal.CustomMaterialOutputType.CMOT_FLOAT1, description='SoftPuff')
+soft.set_editor_property('code', 'return pow(saturate(A), 1.8) * smoothstep(0.52, 0.22, length(UV - 0.5));')
+_si = []
+for _n in ('A', 'UV'):
+    _c = unreal.CustomInput(); _c.set_editor_property('input_name', _n); _si.append(_c)
+soft.set_editor_property('inputs', _si)
+mel.connect_material_expressions(tex, 'A', soft, 'A')
+mel.connect_material_expressions(uv, '', soft, 'UV')
+shape = mul(m, soft, nl, -450, 150)
 op = mul(m, shape, sparam(m, 'Opacity', 0.6, -600, 620), -300, 200)
 op2 = mul(m, op, e(m, unreal.MaterialExpressionVertexColor, -600, 720), -200, 260, '', 'A')
 df = e(m, unreal.MaterialExpressionDepthFade, -100, 300)

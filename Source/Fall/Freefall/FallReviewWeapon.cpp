@@ -7,8 +7,10 @@
 #include "FallWorld.h"
 #include "FallDebris.h"
 #include "FallDirector.h"
+#include "FallAirship.h"
 #include "FallEnemy.h"
 #include "EngineUtils.h"
+#include "UObject/UObjectIterator.h"
 #include "Kismet/GameplayStatics.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
@@ -397,18 +399,18 @@ void AFallReview::CheckTandem(AFallPlayer* P)
 	const FVector R = (C->Mesh->GetSocketLocation("upperarm_r") - C->Mesh->GetSocketLocation("upperarm_l")).GetSafeNormal();
 	const FVector Back = -(R ^ U).GetSafeNormal();
 	const FVector CC = C->Mesh->GetSocketLocation("spine_04");
-	const FVector SL = CC - R * 30.f + Back * 22.f + U * 4.f, SR = CC + R * 30.f + Back * 22.f + U * 4.f;
+	const FVector StrapLeft = CC - R * 30.f + Back * 22.f + U * 4.f, StrapRight = CC + R * 30.f + Back * 22.f + U * 4.f;
 	const FVector Pack = C->Pack ? C->Pack->Bounds.Origin : CC;
-	const bool bLeft = FVector::Dist(P->Mesh->GetSocketLocation("hand_l"), SL) < 15.f;
-	const bool bRight = FVector::Dist(P->Mesh->GetSocketLocation("hand_r"), SR) < 15.f || FVector::Dist(P->Mesh->GetSocketLocation("hand_r"), Pack) < 70.f;
+	const bool bLeft = FVector::Dist(P->Mesh->GetSocketLocation("hand_l"), StrapLeft) < 15.f;
+	const bool bRight = FVector::Dist(P->Mesh->GetSocketLocation("hand_r"), StrapRight) < 15.f || FVector::Dist(P->Mesh->GetSocketLocation("hand_r"), Pack) < 70.f;
 	if (!bLeft || !bRight) ++HandsOff;
-	HandGapSum += FVector::Dist(P->Mesh->GetSocketLocation("hand_l"), SL) + FVector::Dist(P->Mesh->GetSocketLocation("hand_r"), SR);
+	HandGapSum += FVector::Dist(P->Mesh->GetSocketLocation("hand_l"), StrapLeft) + FVector::Dist(P->Mesh->GetSocketLocation("hand_r"), StrapRight);
 	// Diagnostics: do the bodies share an attitude, and where do the IK targets point.
 	const FVector PU = (P->Mesh->GetSocketLocation("neck_01") - P->Mesh->GetSocketLocation("pelvis")).GetSafeNormal();
 	UpAngleMax = FMath::Max(UpAngleMax, FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp((float)(PU | U), -1.f, 1.f))));
-	TargetGapSum += FVector::Dist(P->Control.HandTarget[0], SL);
+	TargetGapSum += FVector::Dist(P->Control.HandTarget[0], StrapLeft);
 	WeightSum += P->Control.HandWeight[0];
-	ReachSum += FVector::Dist(P->Mesh->GetSocketLocation("upperarm_l"), SL);
+	ReachSum += FVector::Dist(P->Mesh->GetSocketLocation("upperarm_l"), StrapLeft);
 	const FVector PR = (P->Mesh->GetSocketLocation("upperarm_r") - P->Mesh->GetSocketLocation("upperarm_l")).GetSafeNormal();
 	const FVector PF = (PR ^ PU).GetSafeNormal();
 	AheadSum += (C->Mesh->GetSocketLocation("spine_04") - P->Mesh->GetSocketLocation("spine_04")) | PF;
@@ -421,4 +423,49 @@ void AFallReview::CheckTandem(AFallPlayer* P)
 		PackPivotBackSum += (C->Pack->GetComponentLocation() - CC) | Back;
 		if (FVector::Dist(PC, C->Pack->GetComponentLocation()) < FVector::Dist(PC, CC)) ++PackBetween;
 	}
+}
+
+TSharedPtr<FJsonObject> AFallReview::DescribeFrame()
+{
+	AFallPlayer* P = Cast<AFallPlayer>(UGameplayStatics::GetPlayerPawn(this, 0));
+	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
+	if (!P || !PC) return nullptr;
+	const UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this);
+	TSharedPtr<FJsonObject> O = MakeShared<FJsonObject>();
+	O->SetNumberField(TEXT("t"), T);
+	O->SetNumberField(TEXT("fall_time"), FW ? FW->FallTime : 0.f);
+	O->SetBoolField(TEXT("intro"), P->bInIntro);
+	O->SetBoolField(TEXT("hold"), P->IsHolding());
+	O->SetBoolField(TEXT("reload"), P->IsReloading());
+	O->SetBoolField(TEXT("canopy"), P->bCanopy);
+	const AFallDirector* D = AFallDirector::Get(this);
+	O->SetNumberField(TEXT("canopy_clock"), D ? D->CanopyClock() : -1.f);
+	O->SetNumberField(TEXT("agl_m"), FW ? FW->HeightAboveGround() : 0.f);
+	O->SetNumberField(TEXT("cloud_veil"), P->GetCloudVeil());
+	bool bTandem = false;
+	float WingDist = -1.f;
+	int32 SX = 0, SY = 0;
+	PC->GetViewportSize(SX, SY);
+	auto OnScreen = [&](const FVector& W) { FVector2D S; return PC->ProjectWorldLocationToScreen(W, S) && S.X > 0 && S.Y > 0 && S.X < SX && S.Y < SY; };
+	for (TActorIterator<AFallEnemy> It(GetWorld()); It; ++It)
+	{
+		if (It->IsTandem()) bTandem = true;
+		if (It->GetType() == EFallEnemyType::Wingsuiter && !It->IsDead() && OnScreen(It->GetActorLocation()))
+		{
+			const float Dd = (float)FVector::Dist(It->GetActorLocation(), P->GetActorLocation());
+			if (WingDist < 0.f || Dd < WingDist) WingDist = Dd;
+		}
+	}
+	O->SetBoolField(TEXT("tandem"), bTandem);
+	O->SetNumberField(TEXT("jetpack_on_screen_dist"), WingDist);
+	bool bShip = false;
+	// The hull breaks into debris pieces: any visible airship mesh counts, whoever owns it now.
+	for (TObjectIterator<UStaticMeshComponent> It; It && !bShip; ++It)
+	{
+		UStaticMeshComponent* C = *It;
+		if (C->GetWorld() != GetWorld() || !C->IsVisible() || !C->GetStaticMesh()) continue;
+		if (C->GetStaticMesh()->GetPathName().Contains(TEXT("/Assets/Airship/")) && OnScreen(C->Bounds.Origin)) bShip = true;
+	}
+	O->SetBoolField(TEXT("airship_on_screen"), bShip);
+	return O;
 }

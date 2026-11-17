@@ -340,7 +340,9 @@ void AFallDirector::Tick(float Dt)
 		Fire(S->Events[NextEvent++]);
 	}
 
-	if (FW->bAltitudeLive) FW->Altitude -= P->FallSpeed * Dt * (bCanopy ? FMath::Clamp((CanopyTime - 1.5f) * 3.f, 1.f, CanopyDescent) : 1.f);
+	// Under the canopy the descent is time-compressed, easing off over the last 300 m: the landing approach is
+	// seen at a believable speed, not as ground rushing up at hundreds of metres a second.
+	if (FW->bAltitudeLive) FW->Altitude -= P->FallSpeed * Dt * (bCanopy ? FMath::Max(1.f, FMath::Clamp((CanopyTime - 1.5f) * 3.f, 1.f, CanopyDescent) * FMath::Clamp(FW->HeightAboveGround() / 300.f, 0.05f, 1.f)) : 1.f);
 	else FW->Altitude = S->AltitudeAt(Time);
 
 	const float AGL = FW->HeightAboveGround();

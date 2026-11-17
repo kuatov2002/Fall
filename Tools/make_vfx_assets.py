@@ -119,6 +119,8 @@ mel.connect_material_expressions(depth, '', cu, 'Depth')
 mel.connect_material_property(cu, '', MP.MP_BASE_COLOR)
 mel.connect_material_property(nrm, 'RGB', MP.MP_NORMAL)
 mel.connect_material_property(sparam(m, 'Roughness', 0.92, -350, 200), '', MP.MP_ROUGHNESS)
+# Seen at a grazing angle towards the sun, default specular turned the far plains into a white sheet.
+mel.connect_material_property(sparam(m, 'Specular', 0.15, -350, 280), '', MP.MP_SPECULAR)
 mel.recompile_material(m)
 
 # ---- scraps of envelope and paper torn off the airship (two-sided canvas)
@@ -153,7 +155,9 @@ for f in sorted(os.listdir(SRC)):
         w.set_editor_property('looping', True)
         eal.save_loaded_asset(w, False)
 
-# ---- character: a copy of the soldier material with the gloss capped (the chrome armour mirrored the sky white)
+# ---- character: a copy of the soldier material with the gloss capped. Iteration 2 also halved metallic, which turned
+# the dark chrome armour (light metal albedo) into white plastic (ITERATION3_ROOTCAUSE.md, LookDev): metallic stays as
+# authored, only the roughness floor (0.3) blurs the sky in the chrome.
 src = '/Game/RetroFuturisticSoldier/Materials/M_RetroSoldier'
 dst = P + '/M_Char'
 if not eal.does_asset_exist(dst):
@@ -171,6 +175,13 @@ if not eal.does_asset_exist(dst):
     mel.connect_material_property(mmul, '', MP.MP_METALLIC)
     mel.recompile_material(m)
     eal.save_loaded_asset(m, False)
+_m = unreal.load_asset(dst)
+_r = mel.get_material_property_input_node(_m, MP.MP_ROUGHNESS)
+_k = mel.get_material_property_input_node(_m, MP.MP_METALLIC)
+if _r and _r.get_class().get_name() == 'MaterialExpressionMax': _r.set_editor_property('const_b', 0.3)
+if _k and _k.get_class().get_name() == 'MaterialExpressionMultiply': _k.set_editor_property('const_b', 1.0)
+mel.recompile_material(_m)
+eal.save_loaded_asset(_m, False)
 for n in ('MI_Char_Player', 'MI_Char_Shooter', 'MI_Char_Heavy', 'MI_Char_Wingsuit', 'MI_Char_Carrier'):
     x = unreal.load_asset(P + '/' + n)
     if x:

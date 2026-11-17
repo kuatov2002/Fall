@@ -130,7 +130,7 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<UProceduralMeshComponent> Terrain;
 	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<UProceduralMeshComponent> TerrainDetail;
 	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<UProceduralMeshComponent> TerrainFar;
-	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<UInstancedStaticMeshComponent> Trees;
+	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<class UHierarchicalInstancedStaticMeshComponent> Trees;
 
 	/** Cloud deck bottom and thickness, km. */
 	UPROPERTY(EditAnywhere, Category = "Fall") bool bVolumetricClouds = false;

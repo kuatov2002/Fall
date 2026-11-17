@@ -23,6 +23,9 @@
 #include "Camera/CameraComponent.h"
 #include "Components/AudioComponent.h"
 #include "Components/PointLightComponent.h"
+#include "Components/SpotLightComponent.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/App.h"
@@ -68,16 +71,26 @@ AFallPlayer::AFallPlayer()
 	Camera->PostProcessSettings.bOverride_MotionBlurAmount = true;
 	Camera->PostProcessSettings.MotionBlurAmount = 0.f; // enabled after the first second (no smear on spawn)
 	Camera->PostProcessSettings.bOverride_VignetteIntensity = true;
-	Camera->PostProcessSettings.VignetteIntensity = 0.35f;
-	// Slightly darker and punchier than the default auto exposure: snow and cloud stop clipping, the dark suit reads.
+	Camera->PostProcessSettings.VignetteIntensity = 0.15f;
+	// Fixed exposure (EV100, ART_DIRECTION.md "Exposure"): the free histogram exposure lifted the dark valleys and
+	// the dark suit to mid grey and flattened the frame. Reference AAA frames keep real shadows and highlights near
+	// 0.97; the value is set in BeginPlay (-FallEV overrides it for measurement runs).
+	Camera->PostProcessSettings.bOverride_AutoExposureMethod = true;
+	Camera->PostProcessSettings.AutoExposureMethod = EAutoExposureMethod::AEM_Manual;
+	Camera->PostProcessSettings.bOverride_AutoExposureApplyPhysicalCameraExposure = true;
+	Camera->PostProcessSettings.AutoExposureApplyPhysicalCameraExposure = false;
 	Camera->PostProcessSettings.bOverride_AutoExposureBias = true;
-	Camera->PostProcessSettings.AutoExposureBias = -0.6f;
-	Camera->PostProcessSettings.bOverride_AutoExposureSpeedDown = true;
-	Camera->PostProcessSettings.AutoExposureSpeedDown = 0.6f;
-	Camera->PostProcessSettings.bOverride_AutoExposureSpeedUp = true;
-	Camera->PostProcessSettings.AutoExposureSpeedUp = 1.2f;
+	Camera->PostProcessSettings.AutoExposureBias = ExposureEV;
 	Camera->PostProcessSettings.bOverride_ColorContrast = true;
-	Camera->PostProcessSettings.ColorContrast = FVector4(1.08f, 1.08f, 1.08f, 1.f);
+	Camera->PostProcessSettings.ColorContrast = FVector4(1.25f, 1.25f, 1.25f, 1.f);
+	// ACES with a slightly steeper slope: real highlights (the references reach 0.97), shadows below 0.06.
+	Camera->PostProcessSettings.bOverride_FilmSlope = true;
+	Camera->PostProcessSettings.FilmSlope = 0.95f;
+	// Local exposure: keep detail in bright cloud and snow, leave the shadows alone (0.8 lifted them).
+	Camera->PostProcessSettings.bOverride_LocalExposureHighlightContrastScale = true;
+	Camera->PostProcessSettings.LocalExposureHighlightContrastScale = 0.7f;
+	Camera->PostProcessSettings.bOverride_LocalExposureShadowContrastScale = true;
+	Camera->PostProcessSettings.LocalExposureShadowContrastScale = 1.f;
 
 	// Soft fill from the camera side: the body keeps its shape when it is backlit against dark valleys.
 	FillLight = CreateDefaultSubobject<UPointLightComponent>(TEXT("FillLight"));
@@ -88,6 +101,20 @@ AFallPlayer::AFallPlayer()
 	FillLight->SetAttenuationRadius(900.f);
 	FillLight->SetCastShadows(false);
 	FillLight->SetLightColor(FLinearColor(0.75f, 0.85f, 1.f));
+	// Hero rim: a thin light from beyond the body, back towards the camera, on its own lighting channel so only the
+	// player (body and gun) gets it. The silhouette stays readable against the bright sky and the dark valleys.
+	RimLight = CreateDefaultSubobject<USpotLightComponent>(TEXT("RimLight"));
+	RimLight->SetupAttachment(CameraArm);
+	RimLight->SetRelativeLocation(FVector(260.f, 70.f, 110.f));
+	RimLight->SetRelativeRotation(FRotator(-18.f, 195.f, 0.f));
+	RimLight->SetIntensityUnits(ELightUnits::Candelas);
+	RimLight->SetIntensity(60.f);
+	RimLight->SetAttenuationRadius(800.f);
+	RimLight->SetOuterConeAngle(35.f);
+	RimLight->SetCastShadows(false);
+	RimLight->SetLightColor(FLinearColor(1.f, 0.82f, 0.62f));
+	RimLight->LightingChannels.bChannel0 = false;
+	RimLight->LightingChannels.bChannel1 = true;
 
 	WindAudio = CreateDefaultSubobject<UAudioComponent>(TEXT("WindAudio"));
 	WindAudio->SetupAttachment(RootComponent);
@@ -147,13 +174,18 @@ void AFallPlayer::BeginPlay()
 			ScreenWind = UMaterialInstanceDynamic::Create(PP, this);
 			Camera->PostProcessSettings.AddBlendable(ScreenWind, 1.f);
 		}
-		// Grading: cool shadows, warm highlights, bloom on fire and sun, no crushed blacks.
+		// Grading: cool shadows, warm highlights, bloom on fire and sun. Shadows are not lifted (that read as haze).
 		FPostProcessSettings& PS = Camera->PostProcessSettings;
 		PS.bOverride_ColorGainShadows = true; PS.ColorGainShadows = FVector4(0.94f, 0.98f, 1.08f, 1.f);
 		PS.bOverride_ColorGainHighlights = true; PS.ColorGainHighlights = FVector4(1.07f, 1.0f, 0.9f, 1.f);
-		PS.bOverride_ColorOffsetShadows = true; PS.ColorOffsetShadows = FVector4(0.004f, 0.008f, 0.016f, 0.f);
-		PS.bOverride_BloomIntensity = true; PS.BloomIntensity = 0.9f;
-		PS.bOverride_AutoExposureBias = true; PS.AutoExposureBias = 0.2f;
+		PS.bOverride_BloomIntensity = true; PS.BloomIntensity = 0.6f;
+		float EV = ExposureEV;
+		if (FParse::Value(FCommandLine::Get(), TEXT("FallEV="), EV)) ExposureEV = EV;
+		PS.AutoExposureBias = ExposureEV;
+		// The player's own meshes also take the rim light's channel.
+		Mesh->LightingChannels.bChannel1 = true;
+		Mesh->MarkRenderStateDirty();
+		for (UStaticMeshComponent* C : Props) if (C) { C->LightingChannels.bChannel1 = true; C->MarkRenderStateDirty(); }
 	}
 }
 
@@ -737,7 +769,7 @@ void AFallPlayer::UpdateCombat(float Dt)
 	DamagePulse = FMath::FInterpTo(DamagePulse, 0.f, Dt, 2.5f);
 	const float Low = 1.f - FMath::Clamp(Health / MaxHealth, 0.f, 1.f);
 	Camera->PostProcessSettings.bOverride_VignetteIntensity = true;
-	Camera->PostProcessSettings.VignetteIntensity = 0.35f + FMath::Min(DamagePulse * 0.5f + Low * 0.25f, 0.35f);
+	Camera->PostProcessSettings.VignetteIntensity = 0.15f + FMath::Min(DamagePulse * 0.5f + Low * 0.25f, 0.35f);
 	Camera->PostProcessSettings.bOverride_SceneColorTint = true;
 	Camera->PostProcessSettings.SceneColorTint = FLinearColor(1.f, 1.f - DamagePulse * 0.35f, 1.f - DamagePulse * 0.4f);
 	Camera->PostProcessSettings.bOverride_ColorSaturation = true;
@@ -814,7 +846,39 @@ void AFallPlayer::UpdateCamera(float Dt)
 		CameraArm->TargetArmLength *= FMath::Lerp(1.f, 1.35f, TandemCam);
 		CameraArm->SocketOffset *= 1.f - TandemCam;
 	}
-	if (GetWorld()->GetTimeSeconds() > 1.f) Camera->PostProcessSettings.MotionBlurAmount = FMath::Lerp(0.2f, 0.55f, SpeedN) * (1.f - CanopyCam);
+	// The camera never enters the body: a tumbling limb closer than 70 cm pushes the arm out.
+	{
+		const FVector CamPos = Camera->GetComponentLocation();
+		float MinD = 1e9f;
+		for (const TCHAR* B : {TEXT("head"), TEXT("spine_03"), TEXT("pelvis"), TEXT("hand_l"), TEXT("hand_r"), TEXT("foot_l"), TEXT("foot_r"), TEXT("calf_l"), TEXT("calf_r"), TEXT("lowerarm_l"), TEXT("lowerarm_r")})
+		{
+			MinD = FMath::Min(MinD, (float)FVector::Dist(CamPos, Mesh->GetSocketLocation(B)));
+			if (const AFallEnemy* T = RobTarget.Get()) if (T->IsTandem()) MinD = FMath::Min(MinD, (float)FVector::Dist(CamPos, T->Mesh->GetSocketLocation(B))); // the hooked carrier too
+		}
+		CamPush = FMath::FInterpTo(CamPush, FMath::Max(0.f, 70.f - MinD) * 2.5f, Dt, 10.f);
+		CameraArm->TargetArmLength += CamPush;
+		// Big hollow pieces (envelope, hull) have no collision for the camera probe: when the camera ends up inside
+		// one, that piece is hidden from this view until the camera is out (a frame of inside-out shell otherwise).
+		for (int32 i = CamHidden.Num() - 1; i >= 0; --i)
+		{
+			UStaticMeshComponent* C = CamHidden[i].Get();
+			if (!C || !C->Bounds.GetBox().ExpandBy(100.f).IsInside(CamPos)) { if (C) C->SetVisibility(true); CamHidden.RemoveAt(i); }
+		}
+		for (TActorIterator<AFallDebris> It(GetWorld()); It; ++It)
+		{
+			if (FVector::DistSquared(It->GetActorLocation(), CamPos) > FMath::Square(4000.f)) continue;
+			TArray<UStaticMeshComponent*> Comps;
+			It->GetComponents(Comps);
+			for (UStaticMeshComponent* C : Comps)
+			{
+				if (!C->IsVisible() || C->Bounds.BoxExtent.GetMax() < 150.f) continue;
+				if (C->Bounds.GetBox().ExpandBy(-C->Bounds.BoxExtent * 0.2f).IsInside(CamPos)) { C->SetVisibility(false); CamHidden.AddUnique(C); } // deep inside, not just near
+			}
+		}
+	}
+	if (GetWorld()->GetTimeSeconds() > 1.f) Camera->PostProcessSettings.MotionBlurAmount = FMath::Lerp(0.08f, 0.22f, SpeedN) * (1.f - CanopyCam); // more smeared whole frames into mush (critic round 1)
+	Camera->PostProcessSettings.bOverride_MotionBlurMax = true;
+	Camera->PostProcessSettings.MotionBlurMax = 2.5f;
 
 	// Inside the cloud deck: white veil and frost at the edges; out of it the frost melts slower than the veil.
 	if (const UFallWorldSubsystem* FWc = UFallWorldSubsystem::Get(this))

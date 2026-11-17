@@ -9,6 +9,7 @@
 #include "Components/SkyLightComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
+#include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -135,9 +136,13 @@ AFallPlanet::AFallPlanet()
 	Atmosphere = CreateDefaultSubobject<USkyAtmosphereComponent>(TEXT("Atmosphere"));
 	Atmosphere->SetupAttachment(Anchor);
 	Atmosphere->TransformMode = ESkyAtmosphereTransformMode::PlanetTopAtComponentTransform;
-	Atmosphere->AerialPespectiveViewDistanceScale = 2.f; // the far ranges dissolve into the bright horizon instead of meeting it at a seam
+	Atmosphere->AerialPespectiveViewDistanceScale = 1.4f; // 2.0 washed the far plains towards the sun white // the far ranges dissolve into the bright horizon instead of meeting it at a seam
 	// The planet beyond the 80 km terrain: dark olive like the land, so it fades into haze instead of glowing pale blue.
 	Atmosphere->GroundAlbedo = FColor(34, 32, 22);
+	Atmosphere->SkyLuminanceFactor = FLinearColor(0.7f, 0.7f, 0.7f);
+	// Less forward (Mie) glare in the haze: towards the sun the far ranges went into a flat white band.
+	Atmosphere->MieAnisotropy = 0.65f;
+	Atmosphere->MieScatteringScale = 0.0025f;
 
 	Clouds = CreateDefaultSubobject<UVolumetricCloudComponent>(TEXT("Clouds"));
 	Clouds->SetupAttachment(Anchor);
@@ -146,8 +151,10 @@ AFallPlanet::AFallPlanet()
 	Sun->SetupAttachment(RootComponent);
 	Sun->SetUsingAbsoluteRotation(true);
 	// Golden hour: the sun 7 degrees above the horizon, off to the side of the usual view.
-	Sun->SetWorldRotation(FRotator(-7.f, 35.f, 0.f));
-	Sun->SetIntensity(9.f);
+	Sun->SetWorldRotation(FRotator(-10.f, 35.f, 0.f)); // 10 degrees: still golden, the valley floor at the landing is not black
+	// Sun to sky ratio raised (sun 13 lux on the engine's default scale, sky luminance 0.7): sunlit snow and rock
+	// reach real highlights while the sky near the horizon stops being the brightest thing in the frame.
+	Sun->SetIntensity(13.f);
 	Sun->SetLightColor(FLinearColor(1.f, 0.74f, 0.5f));
 	Sun->SetAtmosphereSunLight(true);
 	Sun->SetMobility(EComponentMobility::Movable);
@@ -157,6 +164,7 @@ AFallPlanet::AFallPlanet()
 	SkyLight->SetupAttachment(RootComponent);
 	SkyLight->SetMobility(EComponentMobility::Movable);
 	SkyLight->bRealTimeCapture = true;
+	SkyLight->SetIntensity(3.f); // valleys in the mountains' shadow at sunset went black under the fixed exposure
 
 	Haze = CreateDefaultSubobject<UExponentialHeightFogComponent>(TEXT("Haze"));
 	Haze->SetupAttachment(Anchor);
@@ -164,10 +172,11 @@ AFallPlanet::AFallPlanet()
 	Haze->SetFogDensity(0.025f);
 	Haze->SetFogHeightFalloff(0.2f);
 	// Never fully opaque, and darker than the horizon sky: fogged far ranges must not out-glow the sky above them.
-	Haze->SetFogMaxOpacity(0.55f);
-	Haze->SetFogInscatteringColor(FLinearColor(0.16f, 0.17f, 0.2f));
-	Haze->SetDirectionalInscatteringExponent(6.f);
-	Haze->SetDirectionalInscatteringColor(FLinearColor(1.f, 0.55f, 0.28f));
+	Haze->SetFogMaxOpacity(0.42f);
+	Haze->SetFogInscatteringColor(FLinearColor(0.1f, 0.11f, 0.13f)); // darker: valleys keep their shadows (exposure pass, iteration 3)
+	// Towards the sun the haze glows, but must not wash the far ranges into a flat white band.
+	Haze->SetDirectionalInscatteringExponent(10.f);
+	Haze->SetDirectionalInscatteringColor(FLinearColor(0.28f, 0.16f, 0.08f));
 	Haze->SetVolumetricFog(false);
 
 	Terrain = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("Terrain"));
@@ -179,7 +188,7 @@ AFallPlanet::AFallPlanet()
 	TerrainDetail = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("TerrainDetail"));
 	TerrainDetail->SetupAttachment(Anchor);
 	TerrainDetail->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	Trees = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("Trees"));
+	Trees = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("Trees"));
 	Trees->SetupAttachment(Anchor);
 	Trees->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
@@ -269,14 +278,18 @@ void AFallPlanet::BuildTerrain()
 		const float TreeH = FMath::Max(Tree->GetBoundingBox().GetSize().Z, 100.f) / 100.f; // metres
 		FRandomStream R(7);
 		TArray<FTransform> Xf;
-		for (int32 i = 0; i < 16000; ++i)
+		// Wider and denser than the detail ring: from canopy height the slopes for 10 km around are in view, and
+		// bare grassy hills read as a prototype landscape (critic, iteration 3). Culled beyond 6 km.
+		const float ForestHalf = 4500.f;
+		Trees->SetCullDistances(0, 600000);
+		for (int32 i = 0; i < 45000; ++i)
 		{
-			const float X = R.FRandRange(-DetailHalf, DetailHalf), Y = R.FRandRange(-DetailHalf, DetailHalf);
+			const float X = R.FRandRange(-ForestHalf, ForestHalf), Y = R.FRandRange(-ForestHalf, ForestHalf);
 			const float Clump = FMath::PerlinNoise2D(FVector2D(X / 400.f, Y / 400.f));
 			if (Clump < 0.05f || FMath::Sqrt(X * X + Y * Y) < 250.f) continue;
 			const float TreeLine = HeightAt(X, Y);
 			if (TreeLine < 400.f || TreeLine > 1850.f + Clump * 200.f) continue; // forest belt only
-			const float Hgt = R.FRandRange(9.f, 20.f);
+			const float Hgt = R.FRandRange(14.f, 30.f);
 			const float Sc = Hgt / TreeH;
 			Xf.Add(FTransform(FRotator(0, R.FRandRange(0, 360), 0), FVector(X, Y, HeightAt(X, Y)) * 100.f, FVector(Sc)));
 		}
@@ -495,7 +508,7 @@ void AFallSpeedField::Tick(float Dt)
 	{
 		NextPuff = Rng.FRandRange(PuffInterval.X, PuffInterval.Y);
 		// A wisp is a small cluster of sprites; every third one passes right next to the camera.
-		const bool bClose = ForceClose > 0 || Rng.FRand() < 0.45f;
+		const bool bClose = true; // only wisps rushing past the camera: far sprite clouds over the mountains read as flat stickers (critic rounds 1-3)
 		ForceClose = 0;
 		if (bClose) SinceClose = 0.f;
 		const float BaseSize = Rng.FRandRange(PuffSize.X, PuffSize.Y) * (bClose ? 0.35f : 1.f) * FMath::Lerp(1.f, 3.f, FMath::Clamp((FW->CloudDensity - 1.f) / 2.f, 0.f, 1.f));
@@ -517,13 +530,16 @@ void AFallSpeedField::Tick(float Dt)
 			P.BaseScale = FVector(Size, Size * Rng.FRandRange(0.5f, 0.9f), 100.f) / 100.f;
 			P.Comp->SetWorldScale3D(P.BaseScale);
 			P.Comp->SetVisibility(true);
-			P.Opacity = Rng.FRandRange(0.2f, 0.45f) * (bClose ? 0.6f : 1.f); // the volumetric deck does the heavy lifting
+			P.Opacity = Rng.FRandRange(0.12f, 0.3f) * (bClose ? 0.6f : 1.f); // thin: dense ones read as white stickers
 			if (P.MID)
 			{
 				P.MID->SetScalarParameterValue("Opacity", P.Opacity);
 				P.MID->SetScalarParameterValue("FadeDistance", Size * 0.3f);
 				P.MID->SetScalarParameterValue("Seed", Rng.FRandRange(0.f, 100.f));
 				P.MID->SetScalarParameterValue("NoiseScale", Rng.FRandRange(2.f, 3.5f));
+				// Sunset cloud: never pure white, a shaded underside, so the highlights keep detail.
+				P.MID->SetVectorParameterValue("Color", FLinearColor(0.74f, 0.71f, 0.7f));
+				P.MID->SetScalarParameterValue("Shadow", 0.45f);
 			}
 			P.bActive = true;
 			P.bCounted = false;

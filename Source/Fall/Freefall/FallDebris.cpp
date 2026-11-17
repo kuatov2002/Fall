@@ -263,11 +263,11 @@ void AFallDebris::Tick(float Dt)
 		SmokeTimer -= Dt;
 		if (FX && SmokeTimer <= 0.f)
 		{
-			SmokeTimer = 0.05f; // dense enough to read as one trail, not a string of beads
+			SmokeTimer = 0.04f; // each puff starts wider than the gap to the next: one column, not beads
 			const FVector E = Box->GetUnscaledBoxExtent();
 			const FVector P = Box->GetComponentTransform().TransformPositionNoScale(FVector(FMath::FRandRange(-E.X, E.X) * 0.6f, FMath::FRandRange(-E.Y, E.Y) * 0.6f, E.Z));
 			// Flames are the attached Niagara fire (sprite flames read as a string of beads); smoke stays behind in the air.
-			FX->Sprite(P, FMath::VRand() * 100.f, 260.f, 1500.f, 2.4f, FLinearColor(0.06f, 0.055f, 0.05f), 0.55f, true, 1.f);
+			FX->Sprite(P, FMath::VRand() * 100.f, 480.f, 1700.f, 2.4f, FLinearColor(0.06f, 0.055f, 0.05f), 0.45f, true, 1.f);
 		}
 	}
 }
