@@ -57,6 +57,15 @@ public:
 	bool bTestDummy = false;
 	/** Target only: the parachute is taken. */
 	void Rob(const FVector& PushDir);
+	/** Target only: the player has hooked onto the harness from behind; from now on the body hangs in front of the
+	 *  player (placed from the player's body frame every tick) and opens its canopy for both. */
+	void BeginTandem(class AFallPlayer* By);
+	bool IsTandem() const { return TandemBy.IsValid(); }
+	TWeakObjectPtr<class AFallPlayer> TandemBy;
+	/** Carrier position in the player's body frame (X forward, Z up), eases to the hanging offset. */
+	FVector TandemOffset = FVector::ZeroVector;
+	/** Player location when this body was last placed: the player's hands aim at where the harness will be this frame. */
+	FVector TandemPlacedFrom = FVector::ZeroVector;
 	/** Knocked out of the fight (kick on a heavy, death). */
 	void Knockout(const FVector& PushDir);
 

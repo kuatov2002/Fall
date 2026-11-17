@@ -11,6 +11,11 @@
 #include "Misc/Parse.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
+#include "Animation/AnimMontage.h"
+#include "Animation/AnimInstance.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundBase.h"
+#include "FallFX.h"
 
 namespace
 {
@@ -90,7 +95,9 @@ AFallBody::AFallBody()
 void AFallBody::BeginPlay()
 {
 	if (!AnimData) AnimData = LoadObject<UFallAnimData>(nullptr, TEXT("/Game/Freefall/Data/DA_FallAnim.DA_FallAnim"));
-	if (USkeletalMesh* Char = UFallArtData::Get()->CharacterMesh.LoadSynchronous())
+	USkeletalMesh* Char = UFallArtData::Get()->CharacterMesh.LoadSynchronous();
+	if (!Char) UE_LOG(LogTemp, Error, TEXT("Character mesh missing (%s): the template mannequin stays"), *UFallArtData::Get()->CharacterMesh.ToString());
+	if (Char)
 	{
 		Mesh->SetSkeletalMeshAsset(Char);
 		Mesh->SetAnimInstanceClass(UFallAnimInstance::StaticClass());
@@ -214,7 +221,12 @@ void AFallBody::ArmWeapon()
 	const UFallArtData* Art = UFallArtData::Get();
 	USkeletalMesh* SK = Mesh->GetSkeletalMeshAsset();
 	UStaticMesh* Gun = Art->Pistol.LoadSynchronous();
-	if (!SK || !Gun) return;
+	if (!SK || !Gun)
+	{
+		// Never silent: a missing pistol in a packaged build went unnoticed for a whole iteration.
+		UE_LOG(LogTemp, Error, TEXT("ArmWeapon: %s missing (%s)"), !Gun ? TEXT("pistol") : TEXT("skeletal mesh"), *Art->Pistol.ToString());
+		return;
+	}
 	const FReferenceSkeleton& Ref = SK->GetRefSkeleton();
 	TArray<FTransform> RefCS;
 	FVector Basis[3];
@@ -251,7 +263,101 @@ void AFallBody::ArmWeapon()
 		SpareMag->SetVisibility(false);
 		SpareMag->RegisterComponent();
 		Props.Add(SpareMag);
+
+		// Seated magazine: base plate flush with the well, body along the grip axis.
+		const FVector GripAxis = (Art->PistolGrip - Art->PistolMagWell).GetSafeNormal();
+		const FQuat MagRot = FQuat::FindBetweenNormals(FVector::UpVector, GripAxis);
+		MagSeat = FTransform(MagRot, Art->PistolMagWell + GripAxis * 5.2f);
+		LoadedMag = NewObject<UStaticMeshComponent>(this, TEXT("LoadedMag"));
+		LoadedMag->SetStaticMesh(Mag);
+		LoadedMag->SetupAttachment(WeaponMesh);
+		LoadedMag->SetRelativeTransform(MagSeat);
+		LoadedMag->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		LoadedMag->RegisterComponent();
+		Props.Add(LoadedMag);
 	}
+	// The slide as its own component: the pistol copy shows only the slide, the pistol itself everything else.
+	const int32 SlideSlot = Gun->GetMaterialIndex("Slide_001");
+	if (UMaterialInterface* Hidden = SlideSlot >= 0 ? LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Invisible.M_FF_Invisible")) : nullptr)
+	{
+		SlideMesh = NewObject<UStaticMeshComponent>(this, TEXT("SlideMesh"));
+		SlideMesh->SetStaticMesh(Gun);
+		SlideMesh->SetupAttachment(WeaponMesh);
+		SlideMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		for (int32 i = 0; i < Gun->GetStaticMaterials().Num(); ++i) if (i != SlideSlot) SlideMesh->SetMaterial(i, Hidden);
+		SlideMesh->RegisterComponent();
+		Props.Add(SlideMesh);
+		WeaponMesh->SetMaterial(SlideSlot, Hidden);
+	}
+	if (!ReloadMontage) ReloadMontage = LoadObject<UAnimMontage>(nullptr, TEXT("/Game/Freefall/Anims/AM_Reload_Freefall.AM_Reload_Freefall"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+}
+
+bool AFallBody::bBakeReload = false;
+
+bool AFallBody::IsReloadMontagePlaying() const
+{
+	const UAnimInstance* AI = Mesh->GetAnimInstance();
+	return ReloadMontage && AI && AI->Montage_IsPlaying(ReloadMontage);
+}
+
+void AFallBody::KickSlide(bool bEmpty)
+{
+	SlideKick = 1.f;
+	if (bEmpty) bSlideLocked = true;
+}
+
+FVector AFallBody::ReloadPouchPoint() const
+{
+	const FVector Pel = Mesh->GetSocketLocation("pelvis");
+	const FVector Up = (Mesh->GetSocketLocation("neck_01") - Pel).GetSafeNormal();
+	const FVector Right = (Mesh->GetSocketLocation("upperarm_r") - Mesh->GetSocketLocation("upperarm_l")).GetSafeNormal();
+	const FVector Front = (Right ^ Up).GetSafeNormal();
+	return Pel - Right * 23.f + Front * 17.f - Up * 2.f; // clear of the hip: closer and the index finger went into it
+}
+
+FVector AFallBody::ReloadWellPoint() const
+{
+	if (!WeaponMesh) return FVector::ZeroVector;
+	const FTransform GT = WeaponMesh->GetComponentTransform();
+	return GT.TransformPosition(UFallArtData::Get()->PistolMagWell) - GT.TransformVectorNoScale(FVector::UpVector) * 7.f;
+}
+
+void AFallBody::UpdateWeaponProps(float Dt)
+{
+	if (!WeaponMesh) return;
+	const UFallArtData* Art = UFallArtData::Get();
+	const float t = ReloadT;
+	if (t >= 0.f)
+	{
+		const FTransform GT = WeaponMesh->GetComponentTransform();
+		if (!bMagOut && t >= 0.1f && LoadedMag)
+		{
+			// The thumb drops the magazine; the airstream takes it up past the shooter.
+			bMagOut = true;
+			const FTransform MT = LoadedMag->GetComponentTransform();
+			LoadedMag->SetVisibility(false);
+			if (AFallFX* FX = AFallFX::Get(this)) FX->DropMagazine(MT.GetLocation(), MT.GetRotation(), -GT.TransformVectorNoScale(FVector::UpVector) * 220.f);
+			if (USoundBase* S = Art->Sounds.FindRef("MagOut").LoadSynchronous()) UGameplayStatics::PlaySoundAtLocation(this, S, MT.GetLocation(), 0.8f);
+		}
+		if (SpareMag) SpareMag->SetVisibility(t >= 0.36f && t < 0.68f);
+		if (!bMagIn && t >= 0.68f && LoadedMag)
+		{
+			bMagIn = true;
+			LoadedMag->SetVisibility(true);
+			if (USoundBase* S = Art->Sounds.FindRef("MagIn").LoadSynchronous()) UGameplayStatics::PlaySoundAtLocation(this, S, GT.GetLocation(), 0.9f);
+		}
+		if (!bRacked && t >= 0.86f)
+		{
+			bRacked = true;
+			bSlideLocked = false;
+			if (USoundBase* S = Art->Sounds.FindRef("Charge").LoadSynchronous()) UGameplayStatics::PlaySoundAtLocation(this, S, GT.GetLocation(), 0.9f);
+		}
+	}
+	// Slide travel 4.5 cm towards the back of the gun.
+	SlideKick = FMath::Max(0.f, SlideKick - Dt / 0.07f);
+	float Back = FMath::Max(bSlideLocked ? 1.f : 0.f, FMath::Sin(SlideKick * PI * 0.5f));
+	if (t >= 0.78f && t < 0.86f) Back = FMath::Max(Back, FMath::SmoothStep(0.78f, 0.84f, t)); // racked by the left hand
+	if (SlideMesh) SlideMesh->SetRelativeLocation(-Art->PistolForward * 4.5f * Back);
 }
 
 FVector AFallBody::MuzzleLocation() const
@@ -305,6 +411,12 @@ void AFallBody::StartReloadMotion(float Duration)
 	ReloadT = 0.f;
 	ReloadDur = FMath::Max(Duration, 0.3f);
 	ReloadStartL = Mesh->GetSocketLocation("hand_l");
+	bMagOut = bMagIn = bRacked = false;
+	// The montage plays on the upper body over the fall pose (FFallAnimProxy layers it from the spine).
+	if (ReloadMontage && !bBakeReload)
+	{
+		if (UAnimInstance* AI = Mesh->GetAnimInstance()) AI->Montage_Play(ReloadMontage, ReloadMontage->GetPlayLength() / ReloadDur);
+	}
 }
 
 void AFallBody::UpdateWeaponHands(float Dt)
@@ -329,22 +441,27 @@ void AFallBody::UpdateWeaponHands(float Dt)
 	{
 		ReloadT += Dt / ReloadDur;
 		if (ReloadT >= 1.f) { ReloadT = -1.f; if (SpareMag) SpareMag->SetVisibility(false); Release(0); Release(1); return; }
-		if (bOwnerLeft || bOwnerRight) return; // holding on to something: the hands are busy
-		// Gun low in front of the chest, well clear of the head; the left hand goes to the pouch on the left hip,
-		// comes back in front of the belly and seats the magazine from below. No point of the path is near the head.
-		Set(1, Chest + Front * 36.f + Right * 5.f + Up * 8.f, 1.f); // gun up in front of the chest, at chin height
-		const FVector Pouch = Pel - Right * 21.f + Front * 13.f - Up * 2.f;
-		const FVector Belly = Chest + Front * 22.f - Right * 26.f - Up * 10.f; // along the left side of the torso
-		const FVector Well = GT.TransformPosition(Art->PistolMagWell) - GunUp * 7.f;
+		if (IsReloadMontagePlaying()) { Release(0); Release(1); return; } // the montage moves the arms, even while holding on
+		if (!bBakeReload && (bOwnerLeft || bOwnerRight)) return; // no montage asset: the hands stay on the hold
+		// Gun up in front of the chest, clear of the head. The thumb drops the magazine (0.1), the left hand goes to the
+		// pouch on the left hip (0.33), takes a magazine, comes up the left side of the belly to the well, seats it
+		// with a push (0.62-0.7), goes over the slide and racks it (0.78-0.86), lets go.
+		Set(1, Chest + Front * 34.f + Right * 4.f + Up * 6.f, 1.f);
+		const FVector Pouch = ReloadPouchPoint();
+		const FVector Belly = Chest + Front * 28.f - Right * 24.f - Up * 10.f;
+		const FVector Well = ReloadWellPoint();
+		const FVector GunBack = GT.TransformVectorNoScale(-Art->PistolForward);
+		const FVector SlideGrip = GT.TransformPosition(FVector(4.f, 0.f, 4.f)) + GunUp * 7.f - GT.TransformVectorNoScale(FVector::RightVector) * 3.f;
 		const float t = ReloadT;
 		auto Seg = [](float x, float a, float b) { return FMath::SmoothStep(0.f, 1.f, FMath::Clamp((x - a) / (b - a), 0.f, 1.f)); };
 		FVector L;
-		if (t < 0.3f) L = FMath::Lerp(ReloadStartL, Pouch, Seg(t, 0.f, 0.3f));
-		else if (t < 0.55f) L = FMath::Lerp(Pouch, Belly, Seg(t, 0.3f, 0.55f));
-		else if (t < 0.75f) L = FMath::Lerp(Belly, Well, Seg(t, 0.55f, 0.75f));
-		else L = Well + GunUp * 3.f * FMath::Sin(Seg(t, 0.75f, 0.85f) * PI); // the slap
-		Set(0, L, FMath::Min(Seg(t, 0.f, 0.08f), 1.f - Seg(t, 0.9f, 1.f)));
-		if (SpareMag) SpareMag->SetVisibility(t > 0.3f && t < 0.8f);
+		if (t < 0.36f) L = FMath::Lerp(ReloadStartL, Pouch, Seg(t, 0.04f, 0.33f));
+		else if (t < 0.5f) L = FMath::Lerp(Pouch, Belly, Seg(t, 0.36f, 0.5f));
+		else if (t < 0.62f) L = FMath::Lerp(Belly, Well, Seg(t, 0.5f, 0.62f));
+		else if (t < 0.72f) L = Well + GunUp * 3.f * FMath::Sin(Seg(t, 0.62f, 0.7f) * PI); // the push that seats it
+		else if (t < 0.8f) L = FMath::Lerp(Well, SlideGrip, Seg(t, 0.72f, 0.8f));
+		else L = SlideGrip + GunBack * 5.f * Seg(t, 0.8f, 0.86f) - GunUp * 6.f * Seg(t, 0.88f, 1.f);
+		Set(0, L, FMath::Min(Seg(t, 0.f, 0.06f), 1.f - Seg(t, 0.9f, 1.f)));
 		return;
 	}
 	// Two hands only when the gun is out in front of the chest, clear of the head, and not pointing across the body
@@ -437,6 +554,7 @@ void AFallBody::UpdateBody(float Dt)
 		Follow(OverrideWeight, Control.Override.IsNone() ? 0.f : Control.OverrideTarget, OverridePose == "Canopy" ? 1.4f : 4.f);
 	}
 	UpdateWeaponHands(Dt);
+	UpdateWeaponProps(Dt);
 	Follow(AimWeight, Control.bAim ? 1.f : 0.f, 9.f);
 	Follow(LookWeight, Control.LookAt.IsZero() ? 0.f : 1.f, 4.f);
 	for (int32 h = 0; h < 2; ++h) Follow(HandWeight[h], Control.HandWeight[h], 7.f);

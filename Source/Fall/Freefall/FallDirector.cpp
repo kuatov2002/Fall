@@ -25,6 +25,7 @@
 
 AFallDirector::AFallDirector()
 {
+	for (int32& R : Risers) R = INDEX_NONE;
 	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.TickGroup = TG_PrePhysics;
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
@@ -94,6 +95,7 @@ void AFallDirector::JumpTo(float T, bool bFromIntro)
 	bLanded = false;
 	UGameplayStatics::SetGlobalTimeDilation(this, 1.f);
 	bCanopy = false;
+	bShockDone = false;
 	bEnded = false;
 	CrashTime = -1.f;
 	Canopy->SetVisibility(false);
@@ -224,22 +226,39 @@ void AFallDirector::Fire(const FFallSequenceEvent& E)
 	}
 }
 
+void AFallDirector::LineSegments(TArray<TPair<FVector, FVector>>& Out) const
+{
+	if (const AFallFX* FX = AFallFX::Get(this))
+	{
+		for (int32 R : Risers) { FVector A, B; if (FX->BeamEnds(R, A, B)) Out.Add(TPair<FVector, FVector>(A, B)); }
+	}
+}
+
 void AFallDirector::Deploy()
 {
+	if (bCanopy) return;
 	bCanopy = true;
+	bShockDone = false;
 	CanopyTime = 0.f;
-	Canopy->SetVisibility(true);
-	if (AFallPlayer* P = UFallWorldSubsystem::Get(this)->Player.Get())
-	{
-		P->bCanopy = true;
-		P->AddShake(1.f);
-		P->HitStop(0.06f);
-		P->AddImpulse(P->GetActorForwardVector() + FVector(0, 0, 0.4f), 2.5f); // the opening shock swings the body under the canopy
-	}
-	FallSynth::Play(this, FallSynth::EKind::Canopy, FVector::ZeroVector, 1.f);
+	Canopy->SetVisibility(false); // the bag comes out first; the canopy shows once the lines are out
+	UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this);
+	// The descent under the canopy is time-compressed to ~15 s whatever the height of the pull.
+	CanopyDescent = FMath::Max(14.f, FW->HeightAboveGround() / (6.f * 15.f));
+	if (AFallPlayer* P = FW->Player.Get()) P->bCanopy = true;
+	FallSynth::Play(this, FallSynth::EKind::Canopy, FVector::ZeroVector, 0.5f, 1.3f); // the bag leaving the container
+	FW->NoteEvent("Ripcord");
+}
+
+// Opening shock: the canopy has filled. Both bodies jerk, fabric snaps, the rush of air is gone.
+static void FallCanopyShock(AFallDirector* D, AFallPlayer* P)
+{
+	P->AddShake(1.2f);
+	P->HitStop(0.07f);
+	P->AddImpulse(P->GetActorForwardVector() + FVector(0, 0, 0.6f), 2.5f); // swings the bodies under the canopy
+	FallSynth::Play(D, FallSynth::EKind::Canopy, FVector::ZeroVector, 1.f);
 	if (const TSoftObjectPtr<USoundBase>* Pop = UFallArtData::Get()->Sounds.Find("CanopyPop"))
-		if (USoundBase* S = Pop->LoadSynchronous()) UGameplayStatics::PlaySound2D(this, S, 1.2f, 0.8f);
-	UFallWorldSubsystem::Get(this)->NoteEvent("CanopyOpen");
+		if (USoundBase* S = Pop->LoadSynchronous()) UGameplayStatics::PlaySound2D(D, S, 1.3f, 0.8f);
+	UFallWorldSubsystem::Get(D)->NoteEvent("CanopyOpen");
 }
 
 void AFallDirector::Crash()
@@ -321,7 +340,7 @@ void AFallDirector::Tick(float Dt)
 		Fire(S->Events[NextEvent++]);
 	}
 
-	if (FW->bAltitudeLive) FW->Altitude -= P->FallSpeed * Dt * (bCanopy ? FMath::Clamp((CanopyTime - 1.5f) * 3.f, 1.f, 14.f) : 1.f);
+	if (FW->bAltitudeLive) FW->Altitude -= P->FallSpeed * Dt * (bCanopy ? FMath::Clamp((CanopyTime - 1.5f) * 3.f, 1.f, CanopyDescent) : 1.f);
 	else FW->Altitude = S->AltitudeAt(Time);
 
 	const float AGL = FW->HeightAboveGround();
@@ -336,21 +355,45 @@ void AFallDirector::Tick(float Dt)
 	if (bCanopy)
 	{
 		CanopyTime += Dt;
-		// Canopy: inflates with an overshoot above the player, risers to the shoulders.
-		const float Inf = FMath::Clamp(CanopyTime / 0.7f, 0.f, 1.f);
-		const float Over = 1.f + 0.15f * FMath::Sin(Inf * PI) ;
-		const FVector Top = P->GetActorLocation() + FVector(0.f, 0.f, 750.f);
+		// Who carries the canopy: the hooked carrier (tandem) or the player (review restarts with -FallGiveParachute).
+		AFallBody* Bearer = P;
+		for (TActorIterator<AFallEnemy> It(GetWorld()); It; ++It) if (It->IsTandem()) Bearer = *It;
+		const FVector Up = FVector::UpVector;
+		const FRotator Yaw(0.f, P->GetActorRotation().Yaw, 0.f);
+		const FVector ShL = Bearer->Mesh->GetSocketLocation("clavicle_l") + Up * 6.f, ShR = Bearer->Mesh->GetSocketLocation("clavicle_r") + Up * 6.f;
+		const FVector Base = (ShL + ShR) * 0.5f;
+		const FVector Pack = Bearer == P ? Base : (Bearer->Mesh->GetSocketLocation("spine_05") + Bearer->Mesh->GetSocketLocation("head")) * 0.5f; // out over the shoulders
+		// 0-0.3 s the bag leaves the container and climbs; 0.3-0.65 s the lines pay out, the canopy a narrow column
+		// trailing above; then it spreads and fills, the shock at CanopyShockTime, a small overshoot.
+		const float LineLen = 760.f;
+		const float Climb = FMath::SmoothStep(0.f, 0.65f, CanopyTime);
+		const float Spread = FMath::Clamp((CanopyTime - 0.65f) / (CanopyShockTime + 0.35f - 0.65f), 0.f, 1.f);
+		const float Over = 1.f + 0.12f * FMath::Sin(FMath::Clamp((CanopyTime - CanopyShockTime) / 0.5f, 0.f, 1.f) * PI);
+		// In freefall the player rides on the carrier's back, right where the airstream takes the bag: it leaves over
+		// the carrier's head instead, clear of the player, and only straightens up once both hang under the canopy.
+		const FVector BearerUp = (Bearer->Mesh->GetSocketLocation("neck_01") - Bearer->Mesh->GetSocketLocation("pelvis")).GetSafeNormal();
+		const FVector ClimbDir = FMath::Lerp((Up + BearerUp * 0.8f).GetSafeNormal(), Up, FMath::SmoothStep(0.f, 1.f, Spread)).GetSafeNormal();
+		const FVector Top = FMath::Lerp(Pack, Base + ClimbDir * LineLen, Climb);
+		Canopy->SetVisibility(true);
 		Canopy->SetWorldLocation(Top);
-		Canopy->SetWorldRotation(FRotator(0.f, P->GetActorRotation().Yaw, 0.f));
-		Canopy->SetWorldScale3D(FVector(FMath::Max(Inf, 0.3f) * Over, FMath::Max(Inf, 0.05f) * Over, FMath::Lerp(2.5f, 1.f, Inf)));
+		Canopy->SetWorldRotation(Yaw);
+		const float SpanW = FMath::Lerp(0.07f, 1.f, FMath::SmoothStep(0.f, 1.f, Spread)) * Over;
+		const float Bag = FMath::Clamp(CanopyTime / 0.3f, 0.f, 1.f);
+		Canopy->SetWorldScale3D(CanopyTime < 0.3f ? FVector(0.06f, 0.04f, 0.08f) * (0.5f + 0.5f * Bag)
+			: FVector(FMath::Lerp(0.12f, 1.f, Spread) * Over, SpanW, FMath::Lerp(1.8f, 1.f, Spread)));
+		if (!bShockDone && CanopyTime >= CanopyShockTime) { bShockDone = true; FallCanopyShock(this, P); }
 		if (AFallFX* FX = AFallFX::Get(this))
 		{
-			int32* Lines = Risers;
-			const FVector Sh = P->Mesh->GetSocketLocation("spine_05");
-			for (int32 i = 0; i < 4; ++i)
+			// Four risers from the bearer's shoulders (front and rear on each side), each fanning into four lines to
+			// the leading or trailing edge across the span. While the bag climbs they run together.
+			for (int32 i = 0; i < NumLines; ++i)
 			{
-				const FVector Edge = Top + FRotator(0.f, P->GetActorRotation().Yaw, 0.f).RotateVector(FVector((i % 2 ? 120.f : -120.f) * Inf, (i < 2 ? 400.f : -400.f) * Inf, -25.f));
-				Lines[i] = FX->Beam(Lines[i], Sh, Edge, FLinearColor(0.15f, 0.15f, 0.15f), 0.8f, true);
+				const int32 Riser = i / 4, k = i % 4;
+				const bool bLeft = Riser < 2, bFront = Riser % 2 == 0;
+				const FVector Root = (bLeft ? ShL : ShR) + Yaw.RotateVector(FVector(bFront ? 6.f : -6.f, 0.f, 0.f));
+				const float SpanY = (bLeft ? -1.f : 1.f) * (60.f + 110.f * k) * SpanW;
+				const FVector Edge = Top + Yaw.RotateVector(FVector((bFront ? 100.f : -110.f) * SpanW, SpanY, -20.f));
+				Risers[i] = FX->Beam(Risers[i], Root, CanopyTime < 0.3f ? Top : Edge, FLinearColor(0.05f, 0.05f, 0.045f), k == 0 ? 1.2f : 0.7f, true, true);
 			}
 		}
 		if (!bLanded && AGL < 2.f)

@@ -27,6 +27,12 @@ protected:
 	void ScanPrimitives();
 	void Shot(const FString& Name);
 	void WriteMetrics();
+	// Weapon in hand (FallReviewWeapon.cpp)
+	FString WeaponProblem(AFallPlayer* P);
+	void CheckWeapon(AFallPlayer* P, class UFallWorldSubsystem* FW);
+	void TickCloseups(AFallPlayer* P, const TArray<FString>& Labels);
+	void WeaponTestInput(float Dt, FFallInputFrame& Out);
+	void WriteWeaponMetrics(TSharedPtr<class FJsonObject> Root);
 
 	FString Dir, Bot, StageDir;
 	float ShotEvery = 0.333f;
@@ -84,4 +90,39 @@ protected:
 	TMap<FString, int32> SelfIntByCase;
 	float NextSelfShot = 0.f;
 	float NextPrimScan = 0.f;
+
+	struct FWeaponStat { int32 Frames = 0, Bad = 0; FString FirstBad; };
+	TMap<FString, FWeaponStat> WeaponStats;
+	TMap<FString, float> LabelSince;
+	TSet<FString> CloseDone;
+	FString CloseState;
+	int32 CloseStep = -1;
+	TWeakObjectPtr<class ACameraActor> CloseCam;
+	bool bWasIntro = false;
+	float AfterIntroUntil = -1.f, AfterRestartUntil = -1.f;
+	int32 SeenWeaponEvents = 0;
+	float WT = 0.f;
+	bool bSeqActive = false, bSeqDone = false, bCloseups = false;
+	int32 SeqFrame = 0;
+	// Reload bake (-FallBakeReload): local bone transforms of the procedural reload, for the montage.
+	TArray<TSharedPtr<class FJsonValue>> BakeFrames;
+	bool bBakeStarted = false;
+	void TickBake(AFallPlayer* P);
+	// Reload and recoil checks (every run): montage plays for the expected time, the left hand passes the pouch and
+	// the magazine well; every shot visibly moves the muzzle.
+	struct FReloadRec { float Start = -1.f, Expected = 0.f, MinPouch = 1e9f, MinWell = 1e9f; int32 Frames = 0, MontageFrames = 0, SelfInt = 0; FString Ctx; };
+	FReloadRec CurReload;
+	TArray<TSharedPtr<class FJsonValue>> ReloadResults;
+	int32 ReloadFails = 0;
+	struct FRecoilRec { FVector Dir; int32 Left = 0; float MaxDeg = 0.f; FString Ctx; };
+	TArray<FRecoilRec> RecoilOpen;
+	TMap<FString, FIntPoint> RecoilStats; // state -> (shots, visible)
+	float PrevTrigger = 0.f;
+	void CheckReloadAndRecoil(AFallPlayer* P, float SelfPen);
+	// Tandem: lines never through the player, the two bodies never inside each other, hands on the straps.
+	int32 TandemFrames = 0, LineHits = 0, BodyOverlap = 0, HandsOff = 0;
+	float LineMinCm = 1e9f, BodyMinCm = 1e9f, HandGapSum = 0.f, UpAngleMax = 0.f, TargetGapSum = 0.f, WeightSum = 0.f, ReachSum = 0.f, AheadSum = 0.f, FacingSum = 0.f, PackBackSum = 0.f, PackPivotBackSum = 0.f;
+	int32 PackBetween = 0;
+	FString LineWorst;
+	void CheckTandem(AFallPlayer* P);
 };

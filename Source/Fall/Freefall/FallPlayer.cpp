@@ -27,6 +27,30 @@
 #include "Kismet/GameplayStatics.h"
 #include "Misc/App.h"
 
+// The carrier's harness as seen from behind: body frame, both shoulder straps beside the container, the ripcord
+// handle low on the container's right side.
+struct FFallHarness { FVector Center, Right, Front, Up, StrapL, StrapR, Ripcord; };
+static FFallHarness FallHarness(const AFallEnemy* T, const AActor* Player)
+{
+	FFallHarness H;
+	// Hooked on, the carrier is placed after the player moves: shift last frame's bones by the player's move since.
+	const FVector Lead = T->IsTandem() ? Player->GetActorLocation() - T->TandemPlacedFrom : FVector::ZeroVector;
+	USkeletalMeshComponent* M = T->Mesh;
+	const FVector Pel = M->GetSocketLocation("pelvis");
+	H.Up = (M->GetSocketLocation("neck_01") - Pel).GetSafeNormal();
+	H.Right = (M->GetSocketLocation("upperarm_r") - M->GetSocketLocation("upperarm_l")).GetSafeNormal();
+	H.Front = (H.Right ^ H.Up).GetSafeNormal();
+	H.Center = M->GetSocketLocation("spine_04") + Lead;
+	const FVector Back = -H.Front;
+	// The straps run down the container's sides (the container stands ~40 cm off the back, 58 cm wide).
+	H.StrapL = H.Center - H.Right * 30.f + Back * 22.f + H.Up * 4.f;
+	H.StrapR = H.Center + H.Right * 30.f + Back * 22.f + H.Up * 4.f;
+	const FVector PackC = T->Pack ? T->Pack->Bounds.Origin + Lead : H.Center + Back * 25.f;
+	H.Ripcord = PackC + H.Right * 30.f - H.Up * 24.f + Back * 6.f;
+	return H;
+}
+
+
 AFallPlayer::AFallPlayer()
 {
 	CameraArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraArm"));
@@ -143,6 +167,7 @@ void AFallPlayer::ResetBody()
 	Ammo = UFallWeaponData::Resolve(Weapon)->MagazineSize;
 	ReloadLeft = 0.f;
 	RobTime = -1.f;
+	RobTarget = nullptr;
 	DamagePulse = 0.f;
 	FallSpeed = UFallMovementData::Resolve(Movement)->BellySpeed;
 	PrevFallSpeed = FallSpeed;
@@ -225,14 +250,45 @@ void AFallPlayer::UpdateMovement(float Dt)
 
 	if (bCanopy)
 	{
-		// Opening shock: the canopy brakes the body hard, then a slow steady descent.
-		FallSpeed = FMath::FInterpTo(FallSpeed, 6.f, Dt, 2.2f);
+		// The canopy is still coming out (bag, lines stretching): freefall goes on. The opening shock brakes both
+		// bodies hard, then a slow steady descent.
+		const AFallDirector* CDir = AFallDirector::Get(this);
+		const float Clock = CDir ? CDir->CanopyClock() : 10.f;
+		const bool bOpen = Clock >= AFallDirector::CanopyShockTime;
+		if (!bOpen)
+		{
+			if (const AFallEnemy* T = RobTarget.Get())
+			{
+				const FFallHarness H = FallHarness(T, this);
+				Control.AttitudeOverride = GetActorQuat().Inverse() * FRotationMatrix::MakeFromXZ(H.Front, H.Up).ToQuat();
+				Control.AttitudeWeight = 1.f;
+				Control.Override = "Grab";
+				Control.OverrideTarget = 1.f;
+				Control.HandTarget[0] = H.StrapL;
+				Control.HandTarget[1] = H.StrapR;
+				Control.HandWeight[0] = Control.HandWeight[1] = 1.f;
+			}
+			if (FW) { FW->PlayerFallSpeed = FallSpeed * 100.f; FW->PlayerVelocityH = VelocityH; Control.AirVelocity = FW->AirVelocityFor(FallSpeed * 100.f, VelocityH); }
+			return;
+		}
+		FallSpeed = FMath::FInterpTo(FallSpeed, 6.f, Dt, Clock < AFallDirector::CanopyShockTime + 0.6f ? 4.5f : 2.2f);
 		VelocityH = FMath::VInterpTo(VelocityH, GetActorForwardVector() * 600.f, Dt, 0.5f);
 		AddActorWorldOffset(VelocityH * Dt);
 		Control.Override = "Canopy";
 		Control.OverrideTarget = 1.f;
 		Control.AttitudeWeight = 0.f;
 		Control.HandWeight[0] = Control.HandWeight[1] = 0.f;
+		if (const AFallEnemy* T = RobTarget.Get())
+		{
+			if (T->IsTandem())
+			{
+				const FFallHarness H = FallHarness(T, this);
+				Control.HandTarget[0] = H.StrapL;
+				Control.HandTarget[1] = H.StrapR;
+				Control.HandWeight[0] = Control.HandWeight[1] = 1.f;
+				Control.LookAt = H.Center + H.Up * 200.f;
+			}
+		}
 		Control.Dive = 0.f;
 		Control.Bank = FMath::Clamp(InputNow.Slide, -1.f, 1.f) * 0.3f;
 		if (FW)
@@ -381,6 +437,17 @@ void AFallPlayer::UpdateHold(float Dt)
 	const FVector Lat = (N ^ UpHint).GetSafeNormal();
 	Control.HandTarget[0] = A + UpHint * 52.f - Lat * 32.f + N * 3.f;
 	Control.HandTarget[1] = A + UpHint * 52.f + Lat * 32.f + N * 3.f;
+	// A handle level with the face put a hand through the helmet (self-intersection test): keep the hands outside a
+	// 30 cm sphere around the head and 20 cm from the spine line.
+	const FVector Head = Mesh->GetSocketLocation("head"), Pel = Mesh->GetSocketLocation("pelvis"), Neck = Mesh->GetSocketLocation("neck_01");
+	for (FVector& HT : Control.HandTarget)
+	{
+		const FVector D = HT - Head;
+		if (D.Size() < 30.f) HT = Head + D.GetSafeNormal(UE_SMALL_NUMBER, Lat) * 30.f;
+		const FVector OnSpine = FMath::ClosestPointOnSegment(HT, Pel, Neck);
+		const FVector S = HT - OnSpine;
+		if (S.Size() < 20.f) HT = OnSpine + S.GetSafeNormal(UE_SMALL_NUMBER, Lat) * 20.f;
+	}
 	Control.HandWeight[0] = 1.f;
 	Control.HandWeight[1] = Control.bAim ? 0.f : 1.f;
 }
@@ -415,6 +482,7 @@ void AFallPlayer::Fire()
 	if (FireCooldown > 0.f || ReloadLeft > 0.f) return;
 	if (Ammo <= 0) { StartReload(); return; }
 	--Ammo;
+	KickSlide(Ammo == 0);
 	FireCooldown = W->FireInterval;
 	LastShot = GetWorld()->GetTimeSeconds();
 	const FVector Muzzle = MuzzleLocation();
@@ -514,7 +582,7 @@ void AFallPlayer::TryKick()
 void AFallPlayer::GiveParachute()
 {
 	bHasParachute = true;
-	if (!ParachutePack) ParachutePack = AttachMesh("spine_03", UFallArtData::Get()->ParachuteContainer.LoadSynchronous(), FVector(0, -14.f, 2.f), FRotator(0.f, 180.f, 0.f), 1.05f);
+	if (!ParachutePack) ParachutePack = AttachMesh("spine_03", UFallArtData::Get()->ParachuteContainer.LoadSynchronous(), FVector(0, -14.f, 2.f), FRotator::ZeroRotator, 1.05f);
 }
 
 void AFallPlayer::TakeParachute(AFallEnemy* Target)
@@ -586,7 +654,7 @@ void AFallPlayer::UpdateCombat(float Dt)
 		if (Pressed(&FFallInputFrame::bReload)) StartReload();
 		if (Pressed(&FFallInputFrame::bKick)) TryKick();
 	}
-	const bool bAiming = (InputNow.bAim || InputNow.bFire || Now - LastShot < 1.2f) && ReloadLeft <= 0.f && RobTime < 0.f;
+	const bool bAiming = (InputNow.bAim || InputNow.bFire || Now - LastShot < 1.2f) && ReloadLeft <= 0.f && RobTime < 0.f && !bCanopy;
 	Control.bAim = bAiming;
 	Control.AimAt = AimPoint;
 
@@ -612,33 +680,56 @@ void AFallPlayer::UpdateCombat(float Dt)
 	}
 	if (KickTime < 0.f) Control.YawOffset = FMath::FInterpTo(Control.YawOffset, 0.f, Dt, 4.f);
 
-	// Taking the parachute: both hands on the yellow container, a yank, the container is ours.
+	// Tandem: the player closes on the carrier's back, both hands take the shoulder straps beside the container
+	// (0.45 s, the bodies lock together), the right hand finds the ripcord low on the container and yanks it (0.95 s):
+	// the canopy comes out of the carrier's container and opens for both. No container changes hands.
 	if (RobTime >= 0.f)
 	{
 		RobTime += Dt;
 		AFallEnemy* T = RobTarget.Get();
-		if (T && T->Pack)
+		if (!T) { RobTime = -1.f; Control.HandWeight[0] = Control.HandWeight[1] = 0.f; }
+		else
 		{
-			const FVector PackPos = T->Pack->GetComponentLocation();
-			SetActorLocation(FMath::VInterpTo(GetActorLocation(), PackPos + (GetActorLocation() - PackPos).GetSafeNormal() * 70.f, Dt, 6.f));
-			const FVector Lat = FVector::CrossProduct((PackPos - GetActorLocation()).GetSafeNormal(), FVector::UpVector).GetSafeNormal();
-			Control.HandTarget[0] = PackPos - Lat * 15.f;
-			Control.HandTarget[1] = PackPos + Lat * 15.f;
-			Control.HandWeight[0] = Control.HandWeight[1] = 1.f;
-			Control.LookAt = PackPos;
+			const FFallHarness H = FallHarness(T, this);
+			if (!T->IsTandem())
+			{
+				SetActorLocation(FMath::VInterpTo(GetActorLocation(), H.Center - H.Front * 72.f - H.Up * 30.f, Dt, 9.f));
+				if (RobTime >= 0.45f)
+				{
+					T->BeginTandem(this);
+					HitStop(0.06f);
+					AddShake(0.5f);
+					FallSynth::Play(this, FallSynth::EKind::Grab, T->GetActorLocation(), 1.f, 0.8f);
+					if (UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this)) FW->NoteEvent("TandemHook");
+				}
+			}
+			// Same attitude as the carrier, chest to the container.
+			Control.AttitudeOverride = GetActorQuat().Inverse() * FRotationMatrix::MakeFromXZ(H.Front, H.Up).ToQuat();
+			Control.AttitudeWeight = 1.f;
+			Control.Override = "Grab";
+			Control.OverrideTarget = 1.f;
+			Control.Dive = 0.f;
+			const float Reach = FMath::SmoothStep(0.f, 0.35f, RobTime);
+			Control.HandTarget[0] = H.StrapL;
+			FVector Rt = H.StrapR;
+			if (RobTime > 0.55f)
+			{
+				const float A = FMath::SmoothStep(0.55f, 0.8f, RobTime), Yank = FMath::SmoothStep(0.85f, 0.95f, RobTime), Back = FMath::SmoothStep(1.05f, 1.35f, RobTime);
+				Rt = FMath::Lerp(FMath::Lerp(H.StrapR, H.Ripcord, A) + (H.Right * 22.f - H.Front * 20.f) * Yank, H.StrapR, Back);
+			}
+			Control.HandTarget[1] = Rt;
+			Control.HandWeight[0] = Control.HandWeight[1] = Reach;
+			Control.LookAt = RobTime > 0.55f && RobTime < 1.f ? H.Ripcord : H.Center;
+			if (RobTime > 0.95f && !bHasParachute)
+			{
+				bHasParachute = true;
+				AddShake(0.3f);
+				FallSynth::Play(this, FallSynth::EKind::Grab, H.Ripcord, 1.f, 1.3f);
+				if (UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this)) FW->NoteEvent("ParachuteTaken");
+				if (AFallDirector* Dir = AFallDirector::Get(this)) { Dir->MarkParachuteCheckpoint(); Dir->Deploy(); }
+			}
+			if (RobTime > 1.4f) RobTime = -1.f; // from here the canopy branch keeps the hands on the straps
 		}
-		if (RobTime > 0.7f && T && !bHasParachute)
-		{
-			GiveParachute();
-			T->Rob((T->GetActorLocation() - GetActorLocation()).GetSafeNormal());
-			PendingHit += -(T->GetActorLocation() - GetActorLocation()).GetSafeNormal() * 1.5f;
-			HitStop(0.08f);
-			AddShake(0.6f);
-			FallSynth::Play(this, FallSynth::EKind::Kick, GetActorLocation(), 1.f, 0.7f);
-			if (UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this)) FW->NoteEvent("ParachuteTaken");
-			if (AFallDirector* Dir = AFallDirector::Get(this)) Dir->MarkParachuteCheckpoint();
-		}
-		if (RobTime > 1.0f) { RobTime = -1.f; RobTarget = nullptr; Control.HandWeight[0] = Control.HandWeight[1] = 0.f; }
 	}
 
 	// Health: regenerates after a quiet moment. Low health desaturates the world and the rim pulses red.
@@ -712,6 +803,17 @@ void AFallPlayer::UpdateCamera(float Dt)
 		CameraArm->TargetOffset += FVector(0.f, 0.f, 200.f * CanopyCam);
 		Camera->SetFieldOfView(Camera->FieldOfView + 10.f * CanopyCam);
 	}
+	// Hooking on and the canopy coming out: the camera swings out to a high three-quarter view of both bodies
+	// (from straight behind it sat inside the carrier and the container).
+	const AFallDirector* CamDir = AFallDirector::Get(this);
+	const bool bTandemShot = RobTime >= 0.f || (bCanopy && CamDir && CamDir->CanopyClock() < AFallDirector::CanopyShockTime + 0.4f);
+	TandemCam = FMath::FInterpTo(TandemCam, bTandemShot ? 1.f : 0.f, Dt, bTandemShot ? 5.f : 1.2f);
+	if (TandemCam > 0.001f)
+	{
+		CameraArm->SetWorldRotation(FQuat::Slerp(CameraArm->GetComponentQuat(), (FRotator(-32.f, CR.Yaw + 55.f, 0.f) + Shake).Quaternion(), TandemCam));
+		CameraArm->TargetArmLength *= FMath::Lerp(1.f, 1.35f, TandemCam);
+		CameraArm->SocketOffset *= 1.f - TandemCam;
+	}
 	if (GetWorld()->GetTimeSeconds() > 1.f) Camera->PostProcessSettings.MotionBlurAmount = FMath::Lerp(0.2f, 0.55f, SpeedN) * (1.f - CanopyCam);
 
 	// Inside the cloud deck: white veil and frost at the edges; out of it the frost melts slower than the veil.
@@ -736,13 +838,16 @@ void AFallPlayer::UpdateCamera(float Dt)
 	if (WindLayers.Num() == 4)
 	{
 		const bool bBrake = Dive < -0.3f;
-		const float Under = 1.f - CanopyCam;
+		// The opening shock cuts the rush of air at once (Shock), the canopy camera settles in slowly after.
+		const AFallDirector* WDir = AFallDirector::Get(this);
+		const float Shock = (bCanopy && WDir && WDir->CanopyClock() >= AFallDirector::CanopyShockTime) ? 1.f : 0.f;
+		const float Under = 1.f - FMath::Max(CanopyCam, Shock * 0.85f);
 		const float Target[4] = {
 			(0.35f + 0.45f * SpeedN) * FMath::Lerp(0.35f, 1.f, Under),
 			(0.15f + 0.75f * SpeedN) * Under,
 			FMath::SmoothStep(0.45f, 1.f, SpeedN) * (bBrake ? 0.f : 0.85f) * Under,
 			(0.25f + 0.55f * SpeedN) * Under + 0.25f * CanopyCam};
-		const float Rate[4] = {2.f, 3.f, bBrake ? 12.f : 2.5f, 3.f};
+		const float Rate[4] = {Shock > 0.f ? 10.f : 2.f, Shock > 0.f ? 14.f : 3.f, (bBrake || Shock > 0.f) ? 14.f : 2.5f, Shock > 0.f ? 10.f : 3.f};
 		for (int32 i = 0; i < 4; ++i)
 		{
 			UAudioComponent* A = WindLayers[i];

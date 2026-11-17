@@ -53,6 +53,13 @@ public:
 	virtual bool ShouldTickIfViewportsOnly() const override { return true; }
 
 	bool IsUnderCanopy() const { return bCanopy; }
+	/** Seconds since the ripcord, -1 without a canopy. Bag out, lines stretch, then the opening shock at CanopyShockTime. */
+	float CanopyClock() const { return bCanopy ? CanopyTime : -1.f; }
+	static constexpr float CanopyShockTime = 0.9f;
+	/** Suspension lines currently drawn (review: lines must not pass through the bodies). */
+	void LineSegments(TArray<TPair<FVector, FVector>>& Out) const;
+	/** Ripcord pulled: the canopy comes out of the carrier's container (or the player's own, review restarts). */
+	void Deploy();
 	/** The player took the parachute: restarts from now keep it. */
 	void MarkParachuteCheckpoint() { bCheckpointParachute = true; Checkpoint = Time; }
 	bool HasEnded() const { return bEnded; }
@@ -60,7 +67,6 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	void Fire(const FFallSequenceEvent& E);
-	void Deploy();
 	void Crash();
 	void DrawPreview();
 	FVector RelToWorld(const FVector& RelMetres) const;
@@ -77,7 +83,10 @@ protected:
 	float EndTime = 0.f;
 	float CrashTime = -1.f;
 	float Fade = 0.f;
-	int32 Risers[4] = {INDEX_NONE, INDEX_NONE, INDEX_NONE, INDEX_NONE};
+	static constexpr int32 NumLines = 16; // 4 risers x 4 lines fanning out to the cells
+	int32 Risers[NumLines];
+	bool bShockDone = false;
+	float CanopyDescent = 14.f;
 	bool bEventsEnabled = true;
 	bool bStarted = false;
 	bool bCheckpointParachute = false;

@@ -14,7 +14,7 @@ public:
 	/** Seconds between shots while the trigger is held. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon") float FireInterval = 0.12f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon") int32 MagazineSize = 24;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon") float ReloadTime = 1.3f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon") float ReloadTime = 1.7f; // magazine out, pouch, magazine in, slide: shorter reads as a twitch
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon") float Damage = 14.f;
 	/** Random spread cone, degrees; grows with each shot and recovers. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon") FVector2D SpreadDeg = FVector2D(0.6f, 3.f);

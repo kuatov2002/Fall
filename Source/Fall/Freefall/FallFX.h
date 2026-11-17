@@ -31,6 +31,8 @@ public:
 	void Tracer(const FVector& A, const FVector& B, const FLinearColor& Color, float Width = 3.f);
 	/** Spent casing thrown from the ejection port; the air takes it up past the shooter. */
 	void Casing(const FVector& Pos, const FVector& Vel);
+	/** A spent magazine: leaves the grip downwards, then the airstream carries it up past the shooter. */
+	void DropMagazine(const FVector& Pos, const FQuat& Rot, const FVector& Vel);
 	/** Explosion: flash, fire and smoke, sparks. */
 	void Explosion(const FVector& Pos, float Scale);
 
@@ -40,7 +42,10 @@ public:
 	class UNiagaraComponent* SpawnOn(class UNiagaraSystem* System, USceneComponent* Parent, const FVector& WorldPos, float Scale = 1.f, const FRotator& WorldRot = FRotator::ZeroRotator);
 
 	/** Persistent beam (telegraph laser); returns a handle. Hide with Beam(handle, ..., false). */
-	int32 Beam(int32 Handle, const FVector& A, const FVector& B, const FLinearColor& Color, float Width, bool bVisible);
+	/** A persistent line. Solid: an ordinary lit cord (suspension lines) instead of the glowing additive beam (lasers). */
+	int32 Beam(int32 Handle, const FVector& A, const FVector& B, const FLinearColor& Color, float Width, bool bVisible, bool bSolid = false);
+	/** Ends of a visible beam (review checks). */
+	bool BeamEnds(int32 Handle, FVector& OutA, FVector& OutB) const;
 
 protected:
 	virtual void BeginPlay() override;
@@ -63,7 +68,10 @@ protected:
 		float Age = 0.f, Life = 0.f, Width = 1.f, Intensity = 1.f;
 		bool bActive = false;
 		bool bPersistent = false;
+		bool bSolid = false;
+		UMaterialInstanceDynamic* SolidMID = nullptr;
 	};
+	void SetSolid(FLine& L, bool bSolid);
 
 	FPart* Take(TArray<FPart>& Pool, int32& Cursor);
 	FLine* TakeLine();
@@ -73,7 +81,8 @@ protected:
 	UPROPERTY() TObjectPtr<USceneComponent> AirAnchor;
 	TArray<FPart> Sprites, Flashes, SparkPool;
 	TArray<FLine> Lines;
-	TArray<FPart> Casings;
+	TArray<FPart> Casings, Mags;
+	int32 MagCursor = 0;
 	/** Flashes are light only: a glowing ball read as a flat disc. One light per flash slot. */
 	UPROPERTY() TArray<TObjectPtr<class UPointLightComponent>> FlashLights;
 	int32 CasingCursor = 0;

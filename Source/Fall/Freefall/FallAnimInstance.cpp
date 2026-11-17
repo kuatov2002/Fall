@@ -4,6 +4,9 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "HAL/PlatformTime.h"
+#include "Animation/AnimMontage.h"
+#include "Animation/AnimMontageEvaluationState.h"
+#include "Animation/AnimSequenceBase.h"
 
 namespace
 {
@@ -136,6 +139,18 @@ void FFallAnimProxy::Init(const FReferenceSkeleton& Ref)
 	}
 	auto Find = [&Ref](const TCHAR* N) { return Ref.FindBoneIndex(FName(N)); };
 	auto Pos = [this](int32 I) { return I >= 0 ? RefCS[I].GetLocation() : FVector::ZeroVector; };
+
+	UpperMask.Init(0.f, NumBones);
+	{
+		const int32 ClavL = Find(TEXT("clavicle_l")), ClavR = Find(TEXT("clavicle_r"));
+		for (int32 i = 0; i < NumBones; ++i)
+		{
+			for (int32 p = i; p >= 0; p = Parents[p]) if (p == ClavL || p == ClavR) { UpperMask[i] = 1.f; break; }
+		}
+		const int32 S4 = Find(TEXT("spine_04")), S5 = Find(TEXT("spine_05"));
+		if (S4 >= 0) UpperMask[S4] = 0.25f;
+		if (S5 >= 0) UpperMask[S5] = 0.5f;
+	}
 
 	const int32 Pelvis = Find(TEXT("pelvis"));
 	if (Pelvis >= 0) Roles[Pelvis] = ERole::Pelvis;
@@ -604,5 +619,36 @@ bool FFallAnimProxy::Evaluate(FPoseContext& Output)
 			Output.Pose[CI] = OutLocal[MeshIdx];
 		}
 	}
+	LayerMontage(Output);
 	return true;
+}
+
+void FFallAnimProxy::LayerMontage(FPoseContext& Output)
+{
+	static const FName Slot("DefaultSlot");
+	const FBoneContainer& BC = Output.Pose.GetBoneContainer();
+	for (const FMontageEvaluationState& E : GetMontageEvaluationData())
+	{
+		const UAnimMontage* M = E.Montage.Get();
+		if (!M || !M->IsValidSlot(Slot)) continue;
+		const float W = E.BlendInfo.GetBlendedValue();
+		if (W <= 0.001f) continue;
+		FCompactPose MP;
+		MP.SetBoneContainer(&BC);
+		MP.ResetToRefPose();
+		FBlendedCurve Curve;
+		Curve.InitFrom(BC);
+		UE::Anim::FStackAttributeContainer Attr;
+		FAnimationPoseData Data(MP, Curve, Attr);
+		M->GetAnimationData(Slot)->GetAnimationPose(Data, FAnimExtractContext((double)E.MontagePosition, false, E.DeltaTimeRecord));
+		for (FCompactPoseBoneIndex CI : Output.Pose.ForEachBoneIndex())
+		{
+			const int32 MeshIdx = BC.MakeMeshPoseIndex(CI).GetInt();
+			const float A = UpperMask.IsValidIndex(MeshIdx) ? UpperMask[MeshIdx] * W : 0.f;
+			if (A <= 0.f) continue;
+			FTransform X;
+			X.Blend(Output.Pose[CI], MP[CI], A);
+			Output.Pose[CI] = X;
+		}
+	}
 }

@@ -142,6 +142,7 @@ protected:
 	float LastDamage = -10.f;
 	float DamagePulse = 0.f;
 	float RobTime = -1.f;
+	float TandemCam = 0.f;
 	bool bKickApplied = false;
 
 	UPROPERTY() TObjectPtr<UFallWindWave> WindWave;

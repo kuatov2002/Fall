@@ -124,6 +124,12 @@ i = sparam(m, 'Intensity', 1.5, -600, -60)
 out(m, mul(m, mul(m, c, i, -400, -150), pw, -250, 0), MP.MP_EMISSIVE_COLOR)
 finish(m)
 
+# Invisible: hides material slots (the pistol is shown as two components, the slide moves on its own).
+m = mk('M_FF_Invisible')
+m.set_editor_property('blend_mode', unreal.BlendMode.BLEND_MASKED)
+out(m, const(m, 0.0, -300, 0), MP.MP_OPACITY_MASK)
+finish(m)
+
 # Soft sprite: smoke, fire, wisps. A puff from a 4x4 atlas of real smoke puffs (Kenney, CC0), a different puff
 # and rotation per particle (Seed), light noise on top. A radial disc read as a string of beads.
 import os as _os

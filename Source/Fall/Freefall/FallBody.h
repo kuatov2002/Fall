@@ -115,9 +115,25 @@ public:
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> WeaponMesh;
 	/** Fresh magazine in the left hand during a reload. */
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> SpareMag;
-	/** Left hand to the belt pouch, magazine into the grip, back. */
+	/** Magazine seated in the grip; drops out at the start of a reload. */
+	UPROPERTY() TObjectPtr<UStaticMeshComponent> LoadedMag;
+	/** The slide on its own (a copy of the pistol showing only the slide): kicks back on each shot, locks back on empty, racked on reload. */
+	UPROPERTY() TObjectPtr<UStaticMeshComponent> SlideMesh;
+	/** Upper-body reload montage (baked from the procedural reload, Tools/make_reload_anim.py). */
+	UPROPERTY() TObjectPtr<class UAnimMontage> ReloadMontage;
+	/** Review bake run: plays the procedural reload so it can be recorded into the montage. */
+	static bool bBakeReload;
+	/** Magazine out and flying, left hand to the pouch, new magazine in, slide racked. */
 	void StartReloadMotion(float Duration);
 	bool IsReloading() const { return ReloadT >= 0.f; }
+	float ReloadFraction() const { return ReloadT; }
+	float ReloadDuration() const { return ReloadDur; }
+	bool IsReloadMontagePlaying() const;
+	/** Where the reload hand must pass: the pouch on the left hip and under the magazine well. */
+	FVector ReloadPouchPoint() const;
+	FVector ReloadWellPoint() const;
+	/** One shot: the slide kicks back; on the last round it stays back until the reload. */
+	void KickSlide(bool bEmpty);
 	FVector MuzzleLocation() const;
 	FVector MuzzleForward() const;
 	/** Deepest penetration (cm) of a hand, finger or forearm into the head, neck or torso this frame; names the pair. */
@@ -205,6 +221,10 @@ protected:
 	/** Support hand while aiming, reload path. Runs before the hand targets are handed to the animation. */
 	void UpdateWeaponHands(float Dt);
 	float ReloadT = -1.f, ReloadDur = 1.f;
+	float SlideKick = 0.f;
+	bool bSlideLocked = false, bMagOut = false, bMagIn = false, bRacked = false;
+	FTransform MagSeat = FTransform::Identity;
+	void UpdateWeaponProps(float Dt);
 	FVector ReloadStartL = FVector::ZeroVector;
 	bool bWeaponHand[2] = {false, false};
 	float SupportBlend = 0.f;

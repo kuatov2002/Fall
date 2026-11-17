@@ -197,7 +197,7 @@ void AFallEnemy::BuildOutfit()
 	}
 	if (T == EFallEnemyType::Target)
 	{
-		Pack = AttachMesh("spine_03", Art->ParachuteContainer.LoadSynchronous(), FVector(0, -16.f, 2.f), FRotator(0.f, 180.f, 0.f), 1.45f);
+		Pack = AttachMesh("spine_03", Art->ParachuteContainer.LoadSynchronous(), FVector(0, -16.f, 2.f), FRotator::ZeroRotator, 1.45f); // no turn: turned 180 the container sat inside the torso and stuck out of the chest
 	}
 	if (T == EFallEnemyType::Shooter || T == EFallEnemyType::Target || T == EFallEnemyType::Wingsuiter)
 	{
@@ -344,6 +344,24 @@ void AFallEnemy::Rob(const FVector& PushDir)
 	AttW += FMath::VRand() * 3.f;
 }
 
+void AFallEnemy::BeginTandem(AFallPlayer* By)
+{
+	State = EFallEnemyState::Robbed;
+	StateTime = 0.f;
+	TandemBy = By;
+	{
+		// Offset in the player's own body frame (X chest direction, Y right, Z up the spine), from the bones.
+		USkeletalMeshComponent* M = By->Mesh;
+		const FVector U = (M->GetSocketLocation("neck_01") - M->GetSocketLocation("pelvis")).GetSafeNormal();
+		const FVector R = (M->GetSocketLocation("upperarm_r") - M->GetSocketLocation("upperarm_l")).GetSafeNormal();
+		const FVector F = (R ^ U).GetSafeNormal();
+		const FVector D = GetActorLocation() - By->GetActorLocation();
+		TandemOffset = FVector(D | F, D | R, D | U);
+	}
+	AddTickPrerequisiteActor(By); // placed after the player has moved: no lag between the two bodies
+	Control = FFallBodyControl();
+}
+
 void AFallEnemy::StationKeep(float Dt, const FVector& Desired, float Agility, float FallAgility)
 {
 	const UFallWorldSubsystem* FW = UFallWorldSubsystem::Get(this);
@@ -372,7 +390,7 @@ void AFallEnemy::FireShot(const FVector& From, const FVector& AimPoint, float Sp
 		FX->Flash(From, bTurret ? 70.f : 40.f, FLinearColor(1.f, 0.55f, 0.2f), 0.05f);
 	}
 	FallSynth::Play(this, FallSynth::EKind::EnemyShot, From, bTurret ? 1.f : 0.8f, bTurret ? 0.8f : 1.05f);
-	if (!bTurret) AddRecoil(0.6f);
+	if (!bTurret) { AddRecoil(0.6f); KickSlide(false); }
 	if (bHit)
 	{
 		if (AFallBody* B = Cast<AFallBody>(Hit.GetActor()))
@@ -403,6 +421,28 @@ void AFallEnemy::Tick(float Dt)
 		Dist = 30000.f;
 		if (State == EFallEnemyState::Telegraph || State == EFallEnemyState::Burst) { State = EFallEnemyState::Cooldown; SetLaser(false, FVector::ZeroVector, FVector::ZeroVector); }
 		ShotsLeft = 0;
+	}
+	if (AFallPlayer* Q = TandemBy.Get())
+	{
+		// Hooked: in front of the player and a little higher, the same attitude; the player's hands are on the harness.
+		const FQuat PQ = Q->BodyPivot->GetComponentQuat();
+		USkeletalMeshComponent* M = Q->Mesh;
+		const FVector U = (M->GetSocketLocation("neck_01") - M->GetSocketLocation("pelvis")).GetSafeNormal();
+		const FVector R = (M->GetSocketLocation("upperarm_r") - M->GetSocketLocation("upperarm_l")).GetSafeNormal();
+		const FVector F = (R ^ U).GetSafeNormal();
+		// Chest to the container, the player's head level with the carrier's lower back: the suspension lines from
+		// the carrier's shoulders rise clear of the player's head.
+		const FVector Want = Q->bCanopy ? FVector(70.f, 0.f, 32.f) : FVector(72.f, 0.f, 30.f); // clear of the big container on the carrier's back
+		TandemOffset = FMath::VInterpTo(TandemOffset, Want, Dt, 6.f);
+		SetActorRotation(Q->GetActorRotation());
+		SetActorLocation(Q->GetActorLocation() + F * TandemOffset.X + R * TandemOffset.Y + U * TandemOffset.Z);
+		TandemPlacedFrom = Q->GetActorLocation();
+		Control.Override = Q->bCanopy ? FName("Canopy") : (IsDead() ? FName("Limp") : FName("Belly"));
+		Control.OverrideTarget = Q->bCanopy || IsDead() ? 1.f : 0.f;
+		Control.AirVelocity = Q->Control.AirVelocity;
+		Super::Tick(Dt);
+		BodyPivot->SetWorldRotation(PQ);
+		return;
 	}
 	if (bTestDummy)
 	{

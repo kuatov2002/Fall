@@ -89,6 +89,16 @@ void AFallFX::BeginPlay()
 			P.Comp->SetMaterial(0, Shell->GetMaterial(0));
 		}
 	}
+	if (UStaticMesh* Mag = Art->Magazine.LoadSynchronous())
+	{
+		Mags.SetNum(6);
+		for (FPart& P : Mags)
+		{
+			UMaterialInstanceDynamic* Unused = nullptr;
+			P.Comp = Make(Mag, nullptr, Unused);
+			P.Comp->SetMaterial(0, Mag->GetMaterial(0));
+		}
+	}
 	Lines.SetNum(48);
 	for (FLine& L : Lines) L.Comp = Make(Cube, AddMat, L.MID);
 }
@@ -169,6 +179,7 @@ void AFallFX::Tracer(const FVector& A, const FVector& B, const FLinearColor& Col
 {
 	FLine* L = TakeLine();
 	if (!L) return;
+	SetSolid(*L, false);
 	const FVector Dir = (B - A).GetSafeNormal();
 	const float Len = (B - A).Size();
 	const float Start = FMath::FRandRange(0.f, FMath::Max(Len - 900.f, 0.f));
@@ -177,7 +188,31 @@ void AFallFX::Tracer(const FVector& A, const FVector& B, const FLinearColor& Col
 	L->Comp->SetVisibility(true);
 }
 
-int32 AFallFX::Beam(int32 Handle, const FVector& A, const FVector& B, const FLinearColor& Color, float Width, bool bVisible)
+void AFallFX::SetSolid(FLine& L, bool bSolid)
+{
+	if (L.bSolid == bSolid) return;
+	L.bSolid = bSolid;
+	if (bSolid && !L.SolidMID)
+	{
+		if (UMaterialInterface* Lit = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/M_FF_Lit.M_FF_Lit")))
+		{
+			L.SolidMID = UMaterialInstanceDynamic::Create(Lit, this);
+			L.SolidMID->SetScalarParameterValue("Roughness", 0.8f);
+			L.SolidMID->SetScalarParameterValue("Metallic", 0.f);
+		}
+	}
+	L.Comp->SetMaterial(0, bSolid && L.SolidMID ? L.SolidMID : L.MID);
+}
+
+bool AFallFX::BeamEnds(int32 Handle, FVector& OutA, FVector& OutB) const
+{
+	if (!Lines.IsValidIndex(Handle) || !Lines[Handle].bActive) return false;
+	OutA = Lines[Handle].A;
+	OutB = Lines[Handle].B;
+	return true;
+}
+
+int32 AFallFX::Beam(int32 Handle, const FVector& A, const FVector& B, const FLinearColor& Color, float Width, bool bVisible, bool bSolid)
 {
 	FLine* L = Lines.IsValidIndex(Handle) ? &Lines[Handle] : nullptr;
 	if (!L)
@@ -190,7 +225,9 @@ int32 AFallFX::Beam(int32 Handle, const FVector& A, const FVector& B, const FLin
 	L->bActive = bVisible;
 	L->bPersistent = true;
 	L->A = A; L->B = B; L->Width = Width; L->Intensity = 2.5f;
+	SetSolid(*L, bSolid);
 	if (L->MID) L->MID->SetVectorParameterValue("Color", Color);
+	if (L->SolidMID) L->SolidMID->SetVectorParameterValue("Color", Color);
 	L->Comp->SetVisibility(bVisible);
 	return bVisible ? Handle : INDEX_NONE;
 }
@@ -237,6 +274,19 @@ void AFallFX::Casing(const FVector& Pos, const FVector& Vel)
 	P->Comp->SetVisibility(true);
 }
 
+void AFallFX::DropMagazine(const FVector& Pos, const FQuat& Rot, const FVector& Vel)
+{
+	if (!Mags.Num()) return;
+	FPart* P = Take(Mags, MagCursor);
+	P->Pos = Pos; P->Vel = Vel; P->Age = 0.f; P->Life = 3.f; P->bActive = true;
+	P->Size0 = FMath::FRandRange(-1.f, 1.f);
+	P->Size1 = 0.f;
+	P->Color = FLinearColor(Rot.X, Rot.Y, Rot.Z, Rot.W); // start orientation
+	P->Comp->SetWorldScale3D(FVector(1.f));
+	P->Comp->SetWorldLocationAndRotation(Pos, Rot);
+	P->Comp->SetVisibility(true);
+}
+
 void AFallFX::Tick(float Dt)
 {
 	Super::Tick(Dt);
@@ -277,6 +327,17 @@ void AFallFX::Tick(float Dt)
 		P.Comp->SetWorldLocation(P.Pos);
 		P.Comp->SetWorldRotation(FRotator(P.Age * 1400.f * P.Size0, P.Age * 900.f, P.Age * 600.f));
 	}
+	for (FPart& P : Mags)
+	{
+		if (!P.bActive) continue;
+		P.Age += Dt;
+		if (P.Age >= P.Life) { P.bActive = false; P.Comp->SetVisibility(false); continue; }
+		// Falls out of the grip for a moment, then the air wins; tumbles slower than a casing (heavier, longer).
+		P.Vel *= FMath::Exp(-2.f * Dt);
+		P.Pos += (P.Vel + Air * FMath::Min(P.Age * 1.2f, 1.f)) * Dt;
+		const FQuat Q0(P.Color.R, P.Color.G, P.Color.B, P.Color.A);
+		P.Comp->SetWorldLocationAndRotation(P.Pos, FQuat(FVector(1.f, 0.3f * P.Size0, 0.2f).GetSafeNormal(), P.Age * 6.f * (0.6f + 0.4f * FMath::Abs(P.Size0))) * Q0);
+	}
 	for (FPart& P : Flashes)
 	{
 		if (!P.bActive) continue;
@@ -311,7 +372,7 @@ void AFallFX::Tick(float Dt)
 		const FVector Mid = (L.A + L.B) * 0.5f;
 		const FVector Dir = L.B - L.A;
 		const float Dist = FMath::Max((float)FMath::PointDistToSegment(C, L.A, L.B), 50.f);
-		const float W = FMath::Max(L.Width, Dist * 0.0012f); // stays at least ~1 px wide far away
+		const float W = L.bSolid ? L.Width : FMath::Max(L.Width, Dist * 0.0012f); // glowing beams stay at least ~1 px wide far away
 		L.Comp->SetWorldLocation(Mid);
 		L.Comp->SetWorldRotation(FRotationMatrix::MakeFromZ(Dir.GetSafeNormal()).Rotator());
 		L.Comp->SetWorldScale3D(FVector(W / 100.f, W / 100.f, Dir.Size() / 100.f));

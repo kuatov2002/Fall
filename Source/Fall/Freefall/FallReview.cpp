@@ -45,6 +45,9 @@ void AFallReview::BeginPlay()
 	bAvg = FParse::Value(Cmd, TEXT("FallBotSkill="), Skill) && Skill == TEXT("avg");
 	if (FParse::Param(Cmd, TEXT("FallDamageTest"))) Bot = TEXT("damage");
 	if (FParse::Param(Cmd, TEXT("FallGrabTest"))) Bot = TEXT("grab");
+	if (FParse::Param(Cmd, TEXT("FallWeaponTest"))) { Bot = TEXT("weapon"); Duration = 1e9f; }
+	bCloseups = FParse::Param(Cmd, TEXT("FallCloseups"));
+	if (FParse::Param(Cmd, TEXT("FallBakeReload"))) { Bot = TEXT("bake"); Duration = 1e9f; ShotEvery = 0.1f; AFallBody::bBakeReload = true; }
 	if (FParse::Param(Cmd, TEXT("FallNoShots"))) ShotEvery = 1e9f;
 	StageDir = FPaths::ProjectSavedDir() / TEXT("Review") / FPaths::GetPathLeaf(FPaths::GetPath(Dir));
 	if (FPaths::GetPath(Dir).IsEmpty()) StageDir = FPaths::ProjectSavedDir() / TEXT("Review");
@@ -167,6 +170,13 @@ void AFallReview::BotInput(float Dt, FFallInputFrame& Out)
 {
 	if (Bot == TEXT("damage")) return;
 	if (Bot == TEXT("grab")) { Out.bGrab = bGrabPress; bGrabPress = false; return; }
+	if (Bot == TEXT("weapon")) { WeaponTestInput(Dt, Out); return; }
+	if (Bot == TEXT("bake"))
+	{
+		Out.bAim = Out.bFire = T >= 1.f && T < 1.05f;
+		Out.bReload = T >= 1.8f && T < 1.85f;
+		return;
+	}
 	if (Bot == TEXT("full"))
 	{
 		BotFull(Dt, Out);
@@ -339,11 +349,15 @@ void AFallReview::Tick(float DeltaSeconds)
 		}
 		if (Pen > SelfIntWorst) { SelfIntWorst = Pen; SelfIntPair = FString::Printf(TEXT("%s at %.1f s"), *Pair, T); }
 	}
+	if (P) CheckWeapon(P, FW);
+	if (P) CheckReloadAndRecoil(P, P->MeasureSelfIntersection());
+	if (P) CheckTandem(P);
+	if (P && Bot == TEXT("bake")) TickBake(P);
 	if (Bot == TEXT("damage")) TickDamageTest(DeltaSeconds);
 	if (Bot == TEXT("grab")) TickGrabTest(DeltaSeconds);
 	T += DeltaSeconds;
 	++Frame;
-	if ((T >= Duration || (bPassed && Bot != TEXT("damage") && Bot != TEXT("grab"))) && !bWritten)
+	if ((T >= Duration || (bPassed && Bot != TEXT("damage") && Bot != TEXT("grab") && Bot != TEXT("weapon") && Bot != TEXT("bake"))) && !bWritten)
 	{
 		WriteMetrics();
 		bWritten = true;
@@ -373,6 +387,7 @@ void AFallReview::WriteMetrics()
 		Root->SetObjectField(TEXT("self_intersection_by_case"), SC);
 	}
 	Root->SetNumberField(TEXT("deaths"), Deaths);
+	WriteWeaponMetrics(Root);
 	if (Bot == TEXT("damage") || Bot == TEXT("grab"))
 	{
 		Root->SetArrayField(TEXT("damage_cases"), DmgResults);

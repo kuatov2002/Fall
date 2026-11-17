@@ -101,6 +101,10 @@ private:
 	float LagBank[3] = {0.f, 0.f, 0.f};
 	bool bLagInit = false;
 	float LookReach = 1.f;
+	/** Montage layer weight per bone (layered blend per bone): both arms from the clavicles down fully, the upper
+	 *  spine partly, legs, pelvis, neck and head stay with the fall pose. */
+	TArray<float> UpperMask;
+	void LayerMontage(FPoseContext& Output);
 };
 
 UCLASS(Transient, BlueprintType)
