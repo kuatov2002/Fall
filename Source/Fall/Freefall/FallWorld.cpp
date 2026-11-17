@@ -1,5 +1,6 @@
 #include "FallWorld.h"
 #include "FallArt.h"
+#include "FallTerrain.h"
 #include "FallPlayer.h"
 #include "ProceduralMeshComponent.h"
 #include "Components/SkyAtmosphereComponent.h"
@@ -89,17 +90,28 @@ namespace
 
 	FLinearColor GroundColor(float H, float Slope, float Noise)
 	{
-		const FLinearColor Meadow(0.10f, 0.16f, 0.05f), Forest(0.035f, 0.07f, 0.03f), Rock(0.16f, 0.14f, 0.12f), Snow(0.82f, 0.85f, 0.9f), Scree(0.24f, 0.22f, 0.2f);
-		FLinearColor C = FMath::Lerp(Meadow, Forest, FMath::SmoothStep(380.f, 650.f, H + Noise * 120.f));
-		C = FMath::Lerp(C, Scree, FMath::SmoothStep(1500.f, 1900.f, H + Noise * 200.f));
+		// Alpine belts (game metres, valley floor 320 = 470 m above sea level): fields on the floor, forest up to the
+		// tree line, alpine meadow, scree and rock, snow from ~3000 m above sea level.
+		const FLinearColor Meadow(0.10f, 0.16f, 0.05f), Forest(0.035f, 0.07f, 0.03f), Rock(0.16f, 0.14f, 0.12f), Snow(0.82f, 0.85f, 0.9f), Scree(0.24f, 0.22f, 0.2f), Alpine(0.12f, 0.13f, 0.06f);
+		FLinearColor C = FMath::Lerp(Meadow, Forest, FMath::SmoothStep(360.f, 520.f, H + Noise * 80.f));
+		C = FMath::Lerp(C, Alpine, FMath::SmoothStep(1750.f, 2000.f, H + Noise * 150.f));
+		C = FMath::Lerp(C, Scree, FMath::SmoothStep(2250.f, 2550.f, H + Noise * 200.f));
 		C = FMath::Lerp(C, Rock * (0.75f + 0.5f * FMath::Abs(Noise)), FMath::SmoothStep(0.3f, 0.6f, Slope));
-		C = FMath::Lerp(C, Snow, FMath::SmoothStep(2550.f, 2850.f, H + Noise * 300.f) * (1.f - FMath::SmoothStep(0.45f, 0.75f, Slope)));
+		C = FMath::Lerp(C, Snow, FMath::SmoothStep(2700.f, 2950.f, H + Noise * 250.f) * (1.f - FMath::SmoothStep(0.55f, 0.85f, Slope)));
 		return C;
 	}
 }
 
 float AFallPlanet::HeightAt(float Xm, float Ym)
 {
+	if (const UFallTerrainData* T = UFallTerrainData::Get())
+	{
+		// Real Alps around the landing valley; right under the landing point the floor is kept gentle.
+		const float Real = T->HeightAt(Xm, Ym);
+		const float Dist = FMath::Sqrt(Xm * Xm + Ym * Ym);
+		const float Floor = T->ValleyFloor + 12.f * FMath::PerlinNoise2D(FVector2D(Xm / 300.f, Ym / 300.f));
+		return FMath::Lerp(FMath::Min(Real, Floor + 40.f), Real, FMath::SmoothStep(700.f, 1600.f, Dist));
+	}
 	// Domain warp: bends the ridge lines so the same shapes do not repeat.
 	const float Wx = FMath::PerlinNoise2D(FVector2D(Xm / 6000.f + 3.1f, Ym / 6000.f - 1.7f)) * 2500.f;
 	const float Wy = FMath::PerlinNoise2D(FVector2D(Xm / 6000.f - 5.3f, Ym / 6000.f + 2.9f)) * 2500.f;
@@ -123,7 +135,7 @@ AFallPlanet::AFallPlanet()
 	Atmosphere = CreateDefaultSubobject<USkyAtmosphereComponent>(TEXT("Atmosphere"));
 	Atmosphere->SetupAttachment(Anchor);
 	Atmosphere->TransformMode = ESkyAtmosphereTransformMode::PlanetTopAtComponentTransform;
-	Atmosphere->AerialPespectiveViewDistanceScale = 1.2f;
+	Atmosphere->AerialPespectiveViewDistanceScale = 2.f; // the far ranges dissolve into the bright horizon instead of meeting it at a seam
 	// The planet beyond the 80 km terrain: dark olive like the land, so it fades into haze instead of glowing pale blue.
 	Atmosphere->GroundAlbedo = FColor(34, 32, 22);
 
@@ -151,8 +163,9 @@ AFallPlanet::AFallPlanet()
 	// Haze reaches up past the cloud deck: the distant horizon blends into warm air instead of a hard seam.
 	Haze->SetFogDensity(0.025f);
 	Haze->SetFogHeightFalloff(0.2f);
-	Haze->SetFogMaxOpacity(0.92f);
-	Haze->SetFogInscatteringColor(FLinearColor(0.32f, 0.42f, 0.62f));
+	// Never fully opaque, and darker than the horizon sky: fogged far ranges must not out-glow the sky above them.
+	Haze->SetFogMaxOpacity(0.55f);
+	Haze->SetFogInscatteringColor(FLinearColor(0.16f, 0.17f, 0.2f));
 	Haze->SetDirectionalInscatteringExponent(6.f);
 	Haze->SetDirectionalInscatteringColor(FLinearColor(1.f, 0.55f, 0.28f));
 	Haze->SetVolumetricFog(false);
@@ -180,6 +193,9 @@ void AFallPlanet::BeginPlay()
 		Clouds->SetMaterial(CloudMat);
 		if (UMaterialInterface* Broken = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/MI_FF_Clouds.MI_FF_Clouds"))) Clouds->SetMaterial(Broken);
 	}
+	// The planet-wide deck read as a flat white slab on the horizon; the cloud passage is carried by the veil and
+	// the wisps, and the horizon is mountains in haze.
+	Clouds->SetVisibility(bVolumetricClouds);
 	Clouds->SetLayerBottomAltitude(CloudDeck.X);
 	Clouds->SetLayerHeight(CloudDeck.Y);
 	BuildTerrain();
@@ -203,12 +219,12 @@ void AFallPlanet::BuildTerrain()
 			{
 				// Sink the coarse mesh under the detail patch so the two never z-fight.
 				const float Inside = 1.f - FMath::Max(FMath::SmoothStep(DetailHalf - 600.f, DetailHalf, FMath::Abs(X)), FMath::SmoothStep(DetailHalf - 600.f, DetailHalf, FMath::Abs(Y)));
-				Z -= 40.f * Inside;
+				Z -= 160.f * Inside; // real slopes are steep: the coarse mesh must stay well under the detail patch
 				if (C == TerrainFar)
 				{
 					// The far ring sinks under the 80 km mesh wherever that one exists.
 					const float InMid = 1.f - FMath::Max(FMath::SmoothStep(38000.f, 40000.f, FMath::Abs(X)), FMath::SmoothStep(38000.f, 40000.f, FMath::Abs(Y)));
-					Z -= 150.f * InMid;
+					Z -= 450.f * InMid;
 				}
 			}
 			// Earth curvature, so the far terrain meets the atmosphere's horizon instead of floating above it.
@@ -253,11 +269,13 @@ void AFallPlanet::BuildTerrain()
 		const float TreeH = FMath::Max(Tree->GetBoundingBox().GetSize().Z, 100.f) / 100.f; // metres
 		FRandomStream R(7);
 		TArray<FTransform> Xf;
-		for (int32 i = 0; i < 9000; ++i)
+		for (int32 i = 0; i < 16000; ++i)
 		{
 			const float X = R.FRandRange(-DetailHalf, DetailHalf), Y = R.FRandRange(-DetailHalf, DetailHalf);
 			const float Clump = FMath::PerlinNoise2D(FVector2D(X / 400.f, Y / 400.f));
 			if (Clump < 0.05f || FMath::Sqrt(X * X + Y * Y) < 250.f) continue;
+			const float TreeLine = HeightAt(X, Y);
+			if (TreeLine < 400.f || TreeLine > 1850.f + Clump * 200.f) continue; // forest belt only
 			const float Hgt = R.FRandRange(9.f, 20.f);
 			const float Sc = Hgt / TreeH;
 			Xf.Add(FTransform(FRotator(0, R.FRandRange(0, 360), 0), FVector(X, Y, HeightAt(X, Y)) * 100.f, FVector(Sc)));

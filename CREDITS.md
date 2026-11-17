@@ -27,6 +27,9 @@
 ## Kenney (CC0, https://kenney.nl)
 Particle Pack, Smoke Particles, Impact Sounds, Sci-Fi Sounds скачаны `Tools/fetch_kenney.py`, в текущей сборке не используются.
 
+## Рельеф
+Высоты долины Роны у Мартиньи (46,112° с. ш., 7,075° в. д.) и Альп вокруг на 440 км: тайлы Terrarium (Mapzen terrain tiles, AWS Open Data, https://registry.opendata.aws/terrain-tiles/). Источники данных в тайлах для этого района: SRTM (общественное достояние, NASA/USGS), EU-DEM (произведено с использованием данных Copernicus), ETOPO1 и другие по списку https://github.com/tilezen/joerd/blob/master/docs/attribution.md. Скачиваются `Tools/fetch_terrain.py`, запекаются в `DA_FallTerrain` скриптом `Tools/make_terrain.py`.
+
 ## Unreal Engine (Unreal Engine EULA)
 Sky Atmosphere, Volumetric Cloud (`m_SimpleVolumetricCloud_Inst`), Exponential Height Fog, ProceduralMeshComponent, Niagara, Level Sequence. Манекен шаблона Third Person больше не используется.
 
