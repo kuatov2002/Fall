@@ -191,7 +191,10 @@ void AFallFX::Explosion(const FVector& Pos, float Scale)
 {
 	const UFallArtData* Art = UFallArtData::Get();
 	Flash(Pos, 900.f * Scale, FLinearColor(1.f, 0.6f, 0.25f), 0.25f);
-	SpawnInAir((Scale > 2.f ? Art->ExplosionLarge : Art->Explosion).LoadSynchronous(), Pos, Scale * (Scale > 2.f ? 1.2f : 1.6f), FRotator(FMath::FRandRange(0.f, 360.f), FMath::FRandRange(0.f, 360.f), 0.f));
+	// Close to the camera the burst is scaled down so its core never fills the screen.
+	APlayerCameraManager* CamM = UGameplayStatics::GetPlayerCameraManager(this, 0);
+	const float Near = CamM ? FMath::Clamp((float)FVector::Dist(Pos, CamM->GetCameraLocation()) / 3000.f, 0.25f, 1.f) : 1.f;
+	SpawnInAir((Scale > 2.f ? Art->ExplosionLarge : Art->Explosion).LoadSynchronous(), Pos, Scale * (Scale > 2.f ? 1.2f : 1.6f) * Near, FRotator(FMath::FRandRange(0.f, 360.f), FMath::FRandRange(0.f, 360.f), 0.f));
 	for (int32 i = 0; i < 4; ++i)
 	{
 		Sprite(Pos + FMath::VRand() * 200.f * Scale, FMath::VRand() * 900.f * Scale, 500.f * Scale, 1300.f * Scale, FMath::FRandRange(0.5f, 0.9f), FLinearColor(1.f, 0.45f, 0.1f), 0.9f, true, 6.f);
@@ -259,9 +262,12 @@ void AFallFX::Tick(float Dt)
 		P.Age += Dt;
 		if (P.Age >= P.Life) { P.bActive = false; P.Comp->SetVisibility(false); continue; }
 		const float X = P.Age / P.Life;
+		// Never let the flash swallow the camera: it stays smaller than the distance to the lens and dims up close.
+		const float CamDist = (float)FVector::Dist(P.Pos, C);
+		const float Size = FMath::Min(FMath::Lerp(P.Size0, P.Size1, X), CamDist * 0.7f);
 		P.Comp->SetWorldLocation(P.Pos);
-		P.Comp->SetWorldScale3D(FVector(FMath::Lerp(P.Size0, P.Size1, X) / 100.f));
-		if (P.MID) P.MID->SetScalarParameterValue("Intensity", 12.f * (1.f - X));
+		P.Comp->SetWorldScale3D(FVector(Size / 100.f));
+		if (P.MID) P.MID->SetScalarParameterValue("Intensity", 12.f * (1.f - X) * FMath::SmoothStep(300.f, 2500.f, CamDist));
 	}
 	for (FPart& P : SparkPool)
 	{

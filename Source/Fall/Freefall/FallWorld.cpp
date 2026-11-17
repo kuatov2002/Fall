@@ -123,6 +123,7 @@ AFallPlanet::AFallPlanet()
 	Atmosphere = CreateDefaultSubobject<USkyAtmosphereComponent>(TEXT("Atmosphere"));
 	Atmosphere->SetupAttachment(Anchor);
 	Atmosphere->TransformMode = ESkyAtmosphereTransformMode::PlanetTopAtComponentTransform;
+	Atmosphere->AerialPespectiveViewDistanceScale = 2.5f; // softer horizon over the cloud sea
 
 	Clouds = CreateDefaultSubobject<UVolumetricCloudComponent>(TEXT("Clouds"));
 	Clouds->SetupAttachment(Anchor);
@@ -171,6 +172,7 @@ void AFallPlanet::BeginPlay()
 	if (UMaterialInterface* CloudMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineSky/VolumetricClouds/m_SimpleVolumetricCloud_Inst.m_SimpleVolumetricCloud_Inst")))
 	{
 		Clouds->SetMaterial(CloudMat);
+		if (UMaterialInterface* Broken = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Freefall/Materials/MI_FF_Clouds.MI_FF_Clouds"))) Clouds->SetMaterial(Broken);
 	}
 	Clouds->SetLayerBottomAltitude(CloudDeck.X);
 	Clouds->SetLayerHeight(CloudDeck.Y);
@@ -294,7 +296,7 @@ void AFallSpeedField::BeginPlay()
 	{
 		UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(Add, this);
 		MID->SetVectorParameterValue("Color", FLinearColor(0.85f, 0.9f, 1.f));
-		MID->SetScalarParameterValue("Intensity", 0.7f);
+		MID->SetScalarParameterValue("Intensity", 0.35f);
 		Streaks->SetMaterial(0, MID);
 	}
 	StreakPos.SetNum(NumStreaks);
@@ -414,13 +416,13 @@ void AFallSpeedField::Tick(float Dt)
 		const float Thick = 0.008f + Dist * 0.000006f;
 		Xf[i] = FTransform(Align, C + P, FVector(Thick, Thick, Len / 100.f));
 	}
-	Streaks->BatchUpdateInstancesTransforms(0, Xf, true, true);
+	if (Xf.Num()) Streaks->BatchUpdateInstancesTransforms(0, Xf, true, true);
 
 	// Specks: tiny bright streaks 1.5-7 m from the lens. Their number and length follow the speed, so a still frame
 	// at the top of a dive reads as fast.
 	const float SpeedN = FMath::Clamp((Speed - 3500.f) / 5500.f, 0.f, 1.f);
 	const int32 Active = FMath::RoundToInt(FMath::Lerp(NumSpecks * 0.3f, (float)NumSpecks, SpeedN));
-	const float SpeckLen = FMath::Max(Speed * 0.012f, 20.f);
+	const float SpeckLen = FMath::Max(Speed * 0.006f, 12.f);
 	TArray<FTransform> Sx;
 	Sx.SetNum(NumSpecks);
 	for (int32 i = 0; i < NumSpecks; ++i)
@@ -464,7 +466,7 @@ void AFallSpeedField::Tick(float Dt)
 		const bool bClose = ForceClose > 0 || Rng.FRand() < 0.45f;
 		ForceClose = 0;
 		if (bClose) SinceClose = 0.f;
-		const float BaseSize = Rng.FRandRange(PuffSize.X, PuffSize.Y) * (bClose ? 0.5f : 1.f) * FMath::Lerp(1.f, 3.f, FMath::Clamp((FW->CloudDensity - 1.f) / 2.f, 0.f, 1.f));
+		const float BaseSize = Rng.FRandRange(PuffSize.X, PuffSize.Y) * (bClose ? 0.35f : 1.f) * FMath::Lerp(1.f, 3.f, FMath::Clamp((FW->CloudDensity - 1.f) / 2.f, 0.f, 1.f));
 		const float A0 = Rng.FRandRange(0.f, 2.f * PI);
 		const float R0 = bClose ? Rng.FRandRange(220.f, 600.f) : Rng.FRandRange(BaseSize * 0.3f + 400.f, 1600.f);
 		++ClusterId;
@@ -483,7 +485,7 @@ void AFallSpeedField::Tick(float Dt)
 			P.BaseScale = FVector(Size, Size * Rng.FRandRange(0.5f, 0.9f), 100.f) / 100.f;
 			P.Comp->SetWorldScale3D(P.BaseScale);
 			P.Comp->SetVisibility(true);
-			P.Opacity = Rng.FRandRange(0.35f, 0.75f);
+			P.Opacity = Rng.FRandRange(0.2f, 0.45f) * (bClose ? 0.6f : 1.f); // the volumetric deck does the heavy lifting
 			if (P.MID)
 			{
 				P.MID->SetScalarParameterValue("Opacity", P.Opacity);

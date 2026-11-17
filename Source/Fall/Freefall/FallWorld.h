@@ -132,7 +132,7 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<UInstancedStaticMeshComponent> Trees;
 
 	/** Cloud deck bottom and thickness, km. */
-	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D CloudDeck = FVector2D(1.9f, 0.7f);
+	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D CloudDeck = FVector2D(1.9f, 1.3f); // a deep deck reads as three-dimensional from above
 	/** Ground haze: dense in the valleys, warm towards the sun. */
 	UPROPERTY(VisibleAnywhere, Category = "Fall") TObjectPtr<class UExponentialHeightFogComponent> Haze;
 
@@ -162,7 +162,7 @@ public:
 	/** Bits of envelope fabric tumbling past, mostly near the airship. */
 	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumScraps = 14;
 
-	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumStreaks = 40;
+	UPROPERTY(EditAnywhere, Category = "Fall") int32 NumStreaks = 0; // long streaks read as scratches on the image; the specks carry the speed
 	UPROPERTY(EditAnywhere, Category = "Fall") FVector2D StreakRadius = FVector2D(280.f, 1300.f);
 	UPROPERTY(EditAnywhere, Category = "Fall") float StreakHalfHeight = 2600.f;
 	/** Streak length = fall speed * this, seconds of motion blur. */

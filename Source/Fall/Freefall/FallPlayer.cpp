@@ -724,13 +724,13 @@ void AFallPlayer::UpdateCamera(float Dt)
 			InCloud = FMath::SmoothStep((float)Pl->CloudDeck.X - 0.1f, (float)Pl->CloudDeck.X + 0.15f, Km) * (1.f - FMath::SmoothStep((float)Pl->CloudDeck.X + (float)Pl->CloudDeck.Y - 0.15f, (float)Pl->CloudDeck.X + (float)Pl->CloudDeck.Y + 0.1f, Km));
 		}
 		CloudVeil = FMath::FInterpTo(CloudVeil, InCloud, Dt, InCloud > CloudVeil ? 3.f : 5.f);
-		Frost = FMath::FInterpTo(Frost, FMath::Max(InCloud, 0.f), Dt, InCloud > Frost ? 1.5f : 0.25f);
+		Frost = FMath::FInterpTo(Frost, FMath::Max(InCloud, 0.f), Dt, InCloud > Frost ? 1.5f : 0.8f);
 	}
 	if (ScreenWind)
 	{
 		ScreenWind->SetScalarParameterValue("Strength", FMath::SmoothStep(0.45f, 1.f, SpeedN) * (1.f - CanopyCam) + FovKick * 0.02f);
-		ScreenWind->SetScalarParameterValue("Frost", Frost * 0.9f);
-		ScreenWind->SetScalarParameterValue("Veil", CloudVeil * 0.7f);
+		ScreenWind->SetScalarParameterValue("Frost", Frost * 0.6f);
+		ScreenWind->SetScalarParameterValue("Veil", CloudVeil * 0.45f);
 	}
 	// Three recorded wind layers by speed and pose; the whistle dies the moment you flare out.
 	if (WindLayers.Num() == 4)
